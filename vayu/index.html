@@ -574,47 +574,41 @@ function computeAQI(pollutantId, concentration) {
 }
 
 /* ── Parse CPCB API response into station objects ────────────────── */
+/* Actual API fields (confirmed): country, state, city, station,
+   last_update, latitude, longitude, pollutant_id, min_value,
+   max_value, avg_value                                              */
 function parseApiRecords(records) {
-  if (records.length > 0) {
-    // Log to console so you can inspect actual field names in DevTools
-    console.log('[vatavaran] API fields:', Object.keys(records[0]));
-    console.log('[vatavaran] First record:', records[0]);
-  }
-
-  /* The CPCB dataset is per-pollutant (one row per station × pollutant).
-     Aggregate by station, keeping the highest AQI sub-index (= composite AQI). */
+  /* Per-pollutant dataset — aggregate by station, keep highest AQI. */
   const byStation = new Map();
 
   records.forEach(r => {
-    const city    = r.city    || r.City    || r.CITY    || '';
-    const station = r.station || r.Station || r.station_name || city;
-    if (!city && !station) return;
+    const city    = r.city    || '';
+    const station = r.station || city;
+    if (!city) return;
 
-    // Coordinates: try the record first, then city lookup
-    let lat = parseFloat(r.latitude  || r.Latitude  || r.lat || '');
-    let lng = parseFloat(r.longitude || r.Longitude || r.lon || r.lng || '');
+    // Coordinates from API (present in real data); fall back to lookup
+    let lat = parseFloat(r.latitude);
+    let lng = parseFloat(r.longitude);
     if (isNaN(lat) || isNaN(lng)) {
       const coords = CITY_COORDS[city] || CITY_COORDS[station];
-      if (!coords) return; // skip if we have no coords at all
+      if (!coords) return;
       [lat, lng] = coords;
     }
 
-    // AQI: try direct field first, then compute from concentration + breakpoints
-    const pollutantId  = (r.pollutant_id || r.Pollutant_id || r.pollutant || '').trim();
-    const concentration = r.pollutant_avg || r.Pollutant_avg || r.avg || r.value || '';
-    const aqiDirect    = parseFloat(r.avg_aqi_value || r.aqi || r.AQI || r.station_aqi || '');
-    const aqi          = isNaN(aqiDirect)
-                         ? computeAQI(pollutantId, concentration)
-                         : Math.round(aqiDirect);
-    if (aqi === null || isNaN(aqi) || aqi <= 0) return;
+    const pollutantId = (r.pollutant_id || '').trim();
+    // avg_value is the raw concentration; compute AQI sub-index
+    const aqi = computeAQI(pollutantId, r.avg_value);
+    if (!aqi || aqi <= 0) return;
 
-    const updated  = r.last_update || r.date || '';
     const key      = `${city}||${station}`;
     const existing = byStation.get(key);
-
-    // Keep the pollutant with the highest sub-index (CPCB composite AQI rule)
+    // CPCB composite AQI = highest sub-index across all pollutants
     if (!existing || aqi > existing.aqi) {
-      byStation.set(key, { city, station, lat, lng, aqi, pollutant: pollutantId || '—', updated });
+      byStation.set(key, {
+        city, station, lat, lng, aqi,
+        pollutant: pollutantId || '—',
+        updated:   r.last_update || '',
+      });
     }
   });
 
