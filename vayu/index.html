@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<!--
+  vatavaran · vayu — Air Quality Dashboard for India
+  ====================================================
+  Data source: India CPCB real-time AQI via data.gov.in
+  API endpoint: https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69
+
+  HOW TO GET A FREE data.gov.in API KEY
+  ----------------------------------------
+  1. Go to https://data.gov.in
+  2. Click "Register" in the top-right corner and create a free account.
+  3. After logging in, go to https://data.gov.in/user/me and copy your API key.
+  4. Replace the placeholder value in the CPCB_API_KEY constant below.
+  5. No payment required — the key is free for non-commercial use.
+
+  The site works without a key (shows demo markers) but live data requires one.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vayu · vatavaran</title>
+  <meta name="description" content="Real-time air quality monitoring across India — powered by CPCB data." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- MapLibre GL JS -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <style>
+    /* ── Reset & base ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0A0F0D;
+      --surface:     #1A2E1F;
+      --surface-2:   #243828;
+      --border:      #2D4A32;
+      --text:        #E8F5E0;
+      --text-muted:  #7DA882;
+      --accent:      #4CAF50;
+
+      /* AQI colour scale */
+      --aqi-good:      #4CAF50;
+      --aqi-satisf:    #8BC34A;
+      --aqi-moderate:  #FFC107;
+      --aqi-poor:      #FF5722;
+      --aqi-verypoor:  #F44336;
+      --aqi-severe:    #B71C1C;
+
+      --nav-h: 56px;
+      --card-w: 280px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Nav ────────────────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      height: var(--nav-h);
+      background: rgba(10, 15, 13, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+
+    .wordmark {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .wordmark span { color: var(--accent); }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+    }
+
+    .tabs a {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 20px;
+      transition: background 0.15s, color 0.15s;
+      color: var(--text-muted);
+    }
+
+    .tabs a.active {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .tabs a:not(.active):hover {
+      color: var(--text);
+    }
+
+    .tabs a.dimmed {
+      opacity: 0.45;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* ── Map container ──────────────────────────────────────────────── */
+    #map {
+      position: fixed;
+      top: var(--nav-h);
+      left: 0; right: 0; bottom: 0;
+    }
+
+    /* MapLibre attribution */
+    .maplibregl-ctrl-attrib { font-size: 10px !important; }
+    .maplibregl-ctrl-bottom-right { bottom: 4px !important; }
+
+    /* ── AQI station marker ─────────────────────────────────────────── */
+    .aqi-marker {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      user-select: none;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    .aqi-marker:hover {
+      transform: scale(1.25);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      z-index: 10;
+    }
+
+    .aqi-marker.nearest {
+      width: 40px;
+      height: 40px;
+      font-size: 10px;
+      border: 2.5px solid #fff;
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.2), 0 4px 16px rgba(0,0,0,0.6);
+    }
+
+    /* ── Popup ──────────────────────────────────────────────────────── */
+    .maplibregl-popup-content {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 12px !important;
+      padding: 16px !important;
+      min-width: 200px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+      font-family: 'Space Grotesk', sans-serif;
+      color: var(--text);
+    }
+
+    .maplibregl-popup-tip {
+      border-top-color: var(--surface) !important;
+      border-bottom-color: var(--surface) !important;
+    }
+
+    .maplibregl-popup-close-button {
+      color: var(--text-muted) !important;
+      font-size: 18px !important;
+      top: 8px !important;
+      right: 10px !important;
+    }
+
+    .popup-city {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .popup-aqi-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .popup-aqi-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .popup-aqi-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .popup-verdict {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .popup-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      margin-top: 2px;
+    }
+
+    .popup-meta span { display: flex; gap: 4px; }
+    .popup-meta strong { color: var(--text); }
+
+    /* ── Nearest station card (bottom-left) ─────────────────────────── */
+    #nearest-card {
+      position: fixed;
+      bottom: 24px;
+      left: 20px;
+      z-index: 90;
+      width: var(--card-w);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      transition: transform 0.3s, opacity 0.3s;
+    }
+
+    #nearest-card.hidden {
+      transform: translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .card-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .card-city {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-aqi-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .card-aqi-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .card-aqi-unit {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card-verdict {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .card-pollutant {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .card-updated {
+      font-size: 10px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+    }
+
+    /* ── Legend ─────────────────────────────────────────────────────── */
+    #legend {
+      position: fixed;
+      bottom: 24px;
+      right: 20px;
+      z-index: 90;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    .legend-title {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+      font-size: 11px;
+      color: var(--text);
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Loading / error overlays ───────────────────────────────────── */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      transition: opacity 0.5s;
+    }
+
+    #loading-overlay.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    #error-banner {
+      position: fixed;
+      top: calc(var(--nav-h) + 12px);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 150;
+      background: #2D1A1A;
+      border: 1px solid #5C2020;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 13px;
+      color: #FF8A80;
+      max-width: 480px;
+      text-align: center;
+      display: none;
+    }
+
+    /* ── Mobile / responsive ────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      :root { --card-w: calc(100vw - 40px); }
+
+      #nearest-card {
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        border-radius: 16px 16px 0 0;
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
+        padding: 18px 20px 28px;
+      }
+
+      #legend {
+        bottom: calc(180px + 24px); /* above the bottom sheet */
+        right: 12px;
+      }
+
+      .card-aqi-num { font-size: 44px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ───────────────────────────────────────────────────── -->
+<nav>
+  <a class="wordmark" href="../">वाता<span>वरण</span></a>
+  <div class="tabs">
+    <a href="../vayu/" class="active" title="Air quality">vayu</a>
+    <a href="../agni/" class="dimmed" title="Coming soon">agni</a>
+    <a href="../jal/"  class="dimmed" title="Coming soon">jal</a>
+  </div>
+</nav>
+
+<!-- ── Map ──────────────────────────────────────────────────────────── -->
+<div id="map"></div>
+
+<!-- ── Nearest station card ─────────────────────────────────────────── -->
+<div id="nearest-card" class="hidden">
+  <div class="card-label">Nearest station</div>
+  <div class="card-city" id="card-city">—</div>
+  <div class="card-aqi-row">
+    <span class="card-aqi-num" id="card-aqi">—</span>
+    <span class="card-aqi-unit">AQI</span>
+  </div>
+  <div class="card-verdict" id="card-verdict"></div>
+  <div class="card-pollutant" id="card-pollutant"></div>
+  <div class="card-updated" id="card-updated"></div>
+</div>
+
+<!-- ── Legend ───────────────────────────────────────────────────────── -->
+<div id="legend">
+  <div class="legend-title">AQI Index</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#4CAF50"></div>0–50 Good</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#8BC34A"></div>51–100 Satisfactory</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#FFC107"></div>101–200 Moderate</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#FF5722"></div>201–300 Poor</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#F44336"></div>301–400 Very Poor</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#B71C1C"></div>401+ Severe</div>
+</div>
+
+<!-- ── Loading overlay ──────────────────────────────────────────────── -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Loading air quality data…</div>
+</div>
+
+<!-- ── Error banner ─────────────────────────────────────────────────── -->
+<div id="error-banner"></div>
+
+<script>
+/* ================================================================
+   vatavaran · vayu — Air Quality Dashboard
+   ================================================================
+
+   REPLACE THIS KEY WITH YOUR data.gov.in API KEY
+   ------------------------------------------------
+   Get a free key at https://data.gov.in (register → profile → API key)
+   Leave it as 'YOUR_API_KEY_HERE' to run the site with demo data instead.
+   ================================================================ */
+const CPCB_API_KEY = '579b464db66ec23bdd0000017f08499ed72e4c027a9c72421819db62'; // ← replace this
+
+/* ── CPCB API config ─────────────────────────────────────────────── */
+const CPCB_RESOURCE_ID = '3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69';
+const CPCB_API_URL     = `https://api.data.gov.in/resource/${CPCB_RESOURCE_ID}`;
+const API_PAGE_LIMIT   = 500; // max records per request
+
+/* ── AQI colour + verdict helpers ───────────────────────────────── */
+function aqiColor(aqi) {
+  if (aqi <= 50)  return '#4CAF50';
+  if (aqi <= 100) return '#8BC34A';
+  if (aqi <= 200) return '#FFC107';
+  if (aqi <= 300) return '#FF5722';
+  if (aqi <= 400) return '#F44336';
+  return '#B71C1C';
+}
+
+function aqiVerdict(aqi) {
+  if (aqi <= 50)  return 'Air is Good';
+  if (aqi <= 100) return 'Air is Satisfactory';
+  if (aqi <= 200) return 'Air is Moderate';
+  if (aqi <= 300) return 'Air is Poor';
+  if (aqi <= 400) return 'Air is Very Poor';
+  return 'Air is Severe';
+}
+
+/* ── Demo data (shown when no API key is set) ────────────────────── */
+const DEMO_STATIONS = [
+  { city:'Delhi',      station:'ITO',            lat:28.6286, lng:77.2402, aqi:287, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Mumbai',     station:'Bandra',         lat:19.0596, lng:72.8295, aqi:82,  pollutant:'NO2',   updated:'2026-08-17 08:00' },
+  { city:'Bengaluru',  station:'Silk Board',     lat:12.9170, lng:77.6101, aqi:64,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Chennai',    station:'Manali',         lat:13.1657, lng:80.2615, aqi:110, pollutant:'SO2',   updated:'2026-08-17 08:00' },
+  { city:'Kolkata',    station:'Rabindra Sarani',lat:22.5726, lng:88.3639, aqi:198, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Hyderabad',  station:'Bollaram',       lat:17.4974, lng:78.3612, aqi:95,  pollutant:'CO',    updated:'2026-08-17 08:00' },
+  { city:'Ahmedabad',  station:'Maninagar',      lat:22.9963, lng:72.6034, aqi:172, pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Pune',       station:'Katraj',         lat:18.4529, lng:73.8481, aqi:55,  pollutant:'NO2',   updated:'2026-08-17 08:00' },
+  { city:'Lucknow',    station:'Lalbagh',        lat:26.8467, lng:80.9462, aqi:324, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Jaipur',     station:'Shastri Nagar',  lat:26.9124, lng:75.7873, aqi:140, pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Kanpur',     station:'Nehru Nagar',    lat:26.4499, lng:80.3319, aqi:356, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Nagpur',     station:'Civil Lines',    lat:21.1502, lng:79.0956, aqi:88,  pollutant:'CO',    updated:'2026-08-17 08:00' },
+  { city:'Patna',      station:'Danapur',        lat:25.5941, lng:85.1376, aqi:261, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Indore',     station:'Palasia',        lat:22.7196, lng:75.8577, aqi:73,  pollutant:'NO2',   updated:'2026-08-17 08:00' },
+  { city:'Bhopal',     station:'TT Nagar',       lat:23.2599, lng:77.4126, aqi:118, pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Visakhapatnam',station:'Gajuwaka',     lat:17.6868, lng:83.2185, aqi:76,  pollutant:'SO2',   updated:'2026-08-17 08:00' },
+  { city:'Surat',      station:'Athwa',          lat:21.1702, lng:72.8311, aqi:131, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Vadodara',   station:'Makarpura',      lat:22.3072, lng:73.1812, aqi:107, pollutant:'NO2',   updated:'2026-08-17 08:00' },
+  { city:'Amritsar',   station:'Ratanpur',       lat:31.6340, lng:74.8723, aqi:215, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Guwahati',   station:'Pan Bazar',      lat:26.1845, lng:91.7362, aqi:42,  pollutant:'CO',    updated:'2026-08-17 08:00' },
+];
+
+/* ── Parse CPCB API response into station objects ────────────────── */
+function parseApiRecords(records) {
+  return records
+    .filter(r => r.latitude && r.longitude && r.avg_aqi_value)
+    .map(r => ({
+      city:      r.city || r.station_name || 'Unknown',
+      station:   r.station_name || '',
+      lat:       parseFloat(r.latitude),
+      lng:       parseFloat(r.longitude),
+      aqi:       Math.round(parseFloat(r.avg_aqi_value)),
+      pollutant: r.prominent_pollutant || '—',
+      updated:   r.last_update || r.date || '',
+    }))
+    .filter(s => !isNaN(s.lat) && !isNaN(s.lng) && !isNaN(s.aqi));
+}
+
+/* ── Fetch live CPCB data (all pages) ────────────────────────────── */
+async function fetchCPCBData() {
+  const params = new URLSearchParams({
+    'api-key':  CPCB_API_KEY,
+    format:     'json',
+    limit:      API_PAGE_LIMIT,
+    offset:     0,
+  });
+
+  const res = await fetch(`${CPCB_API_URL}?${params}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = await res.json();
+
+  let records = json.records || [];
+
+  // Paginate if more records exist
+  const total = parseInt(json.total) || records.length;
+  if (total > API_PAGE_LIMIT) {
+    const pages = Math.ceil(total / API_PAGE_LIMIT);
+    const fetches = [];
+    for (let p = 1; p < pages; p++) {
+      const pg = new URLSearchParams({ 'api-key': CPCB_API_KEY, format: 'json', limit: API_PAGE_LIMIT, offset: p * API_PAGE_LIMIT });
+      fetches.push(fetch(`${CPCB_API_URL}?${pg}`).then(r => r.json()).then(j => j.records || []));
+    }
+    const rest = await Promise.all(fetches);
+    rest.forEach(r => records.push(...r));
+  }
+
+  return parseApiRecords(records);
+}
+
+/* ── Haversine distance (km) ─────────────────────────────────────── */
+function distKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+/* ── Build popup HTML ────────────────────────────────────────────── */
+function buildPopupHTML(s) {
+  const color   = aqiColor(s.aqi);
+  const verdict = aqiVerdict(s.aqi);
+  return `
+    <div class="popup-city">${s.city}${s.station && s.station !== s.city ? ' · ' + s.station : ''}</div>
+    <div class="popup-aqi-row">
+      <span class="popup-aqi-val" style="color:${color}">${s.aqi}</span>
+      <span class="popup-aqi-label">AQI</span>
+    </div>
+    <div class="popup-verdict" style="color:${color}">${verdict}</div>
+    <div class="popup-meta">
+      <span><strong>Pollutant</strong>${s.pollutant}</span>
+      ${s.updated ? `<span><strong>Updated</strong>${s.updated}</span>` : ''}
+    </div>`;
+}
+
+/* ── Update nearest-station card ─────────────────────────────────── */
+function updateCard(s) {
+  const color = aqiColor(s.aqi);
+  document.getElementById('card-city').textContent    = s.station && s.station !== s.city ? `${s.city} · ${s.station}` : s.city;
+  document.getElementById('card-aqi').textContent     = s.aqi;
+  document.getElementById('card-aqi').style.color     = color;
+  document.getElementById('card-verdict').textContent = aqiVerdict(s.aqi);
+  document.getElementById('card-verdict').style.color = color;
+  document.getElementById('card-pollutant').textContent = s.pollutant ? `Dominant pollutant: ${s.pollutant}` : '';
+  document.getElementById('card-updated').textContent   = s.updated ? `Updated ${s.updated}` : '';
+  document.getElementById('nearest-card').classList.remove('hidden');
+}
+
+/* ── Main init ───────────────────────────────────────────────────── */
+(async function init() {
+  /* Init map centred on India */
+  const map = new maplibregl.Map({
+    container: 'map',
+    /* OSM tiles via MapTiler public endpoint — no key needed for dev.
+       For production, replace the style URL with a Protomaps PMTiles
+       hosted on GitHub Pages or a MapTiler free-tier API key URL. */
+    style: {
+      version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      sources: {
+        osm: {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxzoom: 19,
+        },
+      },
+      layers: [
+        {
+          id: 'osm-tiles',
+          type: 'raster',
+          source: 'osm',
+          paint: {
+            /* Darken the base map tiles to match the dark theme */
+            'raster-brightness-min': 0,
+            'raster-brightness-max': 0.25,
+            'raster-saturation': -0.6,
+            'raster-contrast': 0.2,
+          },
+        },
+      ],
+    },
+    center: [82.9, 22.5], // geographic centre of India
+    zoom:   4.5,
+    minZoom: 3,
+    maxZoom: 14,
+  });
+
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+  map.addControl(new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: false,
+  }), 'top-right');
+
+  /* Fetch data — fall back to demo if no key configured */
+  let stations = [];
+  const usingDemo = CPCB_API_KEY === 'YOUR_API_KEY_HERE';
+
+  try {
+    if (usingDemo) {
+      stations = DEMO_STATIONS;
+      showBanner('Demo mode: showing sample data. Replace CPCB_API_KEY in vayu/index.html with your data.gov.in API key for live readings.', 'info');
+    } else {
+      stations = await fetchCPCBData();
+      if (stations.length === 0) throw new Error('No records returned by API');
+    }
+  } catch (err) {
+    console.error('CPCB fetch failed:', err);
+    stations = DEMO_STATIONS;
+    showBanner(`Could not load live data (${err.message}). Showing demo markers.`);
+  }
+
+  /* Render markers */
+  let nearestStation = null;
+  let nearestMarker  = null;
+
+  stations.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'aqi-marker';
+    el.style.background = aqiColor(s.aqi);
+    el.textContent = s.aqi > 999 ? '999+' : s.aqi;
+
+    const popup = new maplibregl.Popup({ offset: 18, closeButton: true, maxWidth: '260px' })
+      .setHTML(buildPopupHTML(s));
+
+    const marker = new maplibregl.Marker({ element: el })
+      .setLngLat([s.lng, s.lat])
+      .setPopup(popup)
+      .addTo(map);
+
+    s._marker = marker;
+    s._el     = el;
+  });
+
+  /* Auto-detect nearest station via Geolocation */
+  function findNearest(userLat, userLng) {
+    if (stations.length === 0) return;
+    let best = null, bestDist = Infinity;
+    stations.forEach(s => {
+      const d = distKm(userLat, userLng, s.lat, s.lng);
+      if (d < bestDist) { bestDist = d; best = s; }
+    });
+    if (best) {
+      nearestStation = best;
+      if (nearestMarker) nearestMarker._el && nearestMarker._el.classList.remove('nearest');
+      best._el.classList.add('nearest');
+      nearestMarker = best;
+      updateCard(best);
+    }
+  }
+
+  /* Try geolocation; fall back to a default nearest pick without it */
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      pos  => findNearest(pos.coords.latitude, pos.coords.longitude),
+      _err => findNearest(28.6, 77.2), // default: New Delhi area
+      { timeout: 5000 }
+    );
+  } else {
+    findNearest(28.6, 77.2);
+  }
+
+  /* Hide loading overlay once map tiles start loading */
+  map.once('idle', () => {
+    const overlay = document.getElementById('loading-overlay');
+    overlay.classList.add('fade-out');
+    setTimeout(() => overlay.style.display = 'none', 500);
+  });
+
+  /* Fallback: hide overlay after 4s regardless */
+  setTimeout(() => {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay.style.display !== 'none') {
+      overlay.classList.add('fade-out');
+      setTimeout(() => overlay.style.display = 'none', 500);
+    }
+  }, 4000);
+})();
+
+/* ── Utility: show error/info banner ────────────────────────────── */
+function showBanner(msg, type = 'error') {
+  const banner = document.getElementById('error-banner');
+  banner.textContent = msg;
+  banner.style.display = 'block';
+  if (type === 'info') {
+    banner.style.background = '#1A2E1F';
+    banner.style.borderColor = '#2D4A32';
+    banner.style.color       = '#7DA882';
+  }
+  /* Auto-dismiss after 8 seconds */
+  setTimeout(() => { banner.style.display = 'none'; }, 8000);
+}
+</script>
+
+</body>
+</html>
