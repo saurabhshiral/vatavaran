@@ -395,6 +395,9 @@
   <div class="legend-item"><div class="legend-dot" style="background:#FF5722"></div>201–300 Poor</div>
   <div class="legend-item"><div class="legend-dot" style="background:#F44336"></div>301–400 Very Poor</div>
   <div class="legend-item"><div class="legend-dot" style="background:#B71C1C"></div>401+ Severe</div>
+  <div style="margin-top:10px; font-size:9px; color:var(--text-muted); line-height:1.4; max-width:180px;">
+    Boundaries shown are for representational purposes only and may not reflect official Survey of India demarcations.
+  </div>
 </div>
 
 <!-- ── Loading overlay ── -->
@@ -688,7 +691,7 @@ function showBanner(msg, type = 'error') {
         return DEMO_STATIONS;
       }
     })(),
-    fetch('https://raw.githubusercontent.com/geohacker/india/master/state/india_state.geojson')
+    fetch('https://raw.githubusercontent.com/datameet/maps/master/States/Admin2.json')
       .then(r => r.ok ? r.json() : null)
       .catch(() => null),
   ]);
@@ -701,7 +704,7 @@ function showBanner(msg, type = 'error') {
   function normStateName(s) { return (s || '').toLowerCase().trim(); }
 
   function getStateNameFromFeature(f) {
-    return f.properties.NAME_1 || f.properties.name || f.properties.State || f.properties.ST_NM || '';
+    return f.properties.ST_NM || f.properties.NAME_1 || f.properties.State || f.properties.name || '';
   }
 
   if (stateGeojson) {
