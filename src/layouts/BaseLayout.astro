@@ -134,8 +134,8 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
   <div class="stat-pill">Worst: <span id="stat-worst" class="val" style="color:#E93F33">—</span></div>
   <div class="stat-pill">Best: <span id="stat-best" class="val" style="color:#55A84F">—</span></div>
 </div>
-<slot />
 <div id="loading-overlay"><div class="spinner"></div><span>Loading data…</span></div>
 <div id="banner"></div>
+<slot />
 </body>
 </html>
