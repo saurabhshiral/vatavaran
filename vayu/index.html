@@ -711,6 +711,44 @@ function showBanner(msg, type = 'error') {
   setTimeout(() => { banner.style.display = 'none'; }, 8000);
 }
 
+/* ── Simplified India boundary for the dark mask ─────────────────── */
+/* Outer ring = entire world; inner ring = India shape (creates a hole) */
+const INDIA_MASK_GEOJSON = {
+  type: 'Feature',
+  geometry: {
+    type: 'Polygon',
+    coordinates: [
+      /* World outer ring (CCW) */
+      [[-180,-90],[-180,90],[180,90],[180,-90],[-180,-90]],
+      /* India inner ring / hole (CW) — simplified outline */
+      [
+        [68.1,37.1],[68.1,35.5],[69.3,34.6],[71.0,33.4],[73.9,34.5],
+        [74.6,34.7],[75.4,34.6],[76.8,34.6],[79.1,32.5],[80.3,31.1],
+        [81.8,30.0],[83.3,29.0],[84.7,28.3],[86.5,28.1],[88.0,27.5],
+        [88.9,27.3],[92.0,27.0],[93.4,26.7],[95.0,27.3],[97.3,28.3],
+        [97.0,25.8],[96.2,23.9],[94.5,23.6],[93.5,22.2],[92.4,21.5],
+        [91.5,22.5],[89.8,21.8],[88.5,21.6],[87.4,21.2],[86.8,20.2],
+        [85.8,19.8],[84.0,19.3],[82.8,18.0],[80.9,16.0],[80.3,15.6],
+        [80.0,13.5],[79.8,10.3],[77.5,8.1],[76.6,8.5],[76.2,10.4],
+        [75.7,11.9],[74.9,13.6],[74.3,14.8],[73.8,18.0],[73.0,18.9],
+        [72.9,19.2],[72.5,21.4],[68.7,22.4],[68.2,23.6],[68.4,29.0],
+        [68.1,37.1]
+      ]
+    ]
+  }
+};
+
+/* AQI colour step expression for MapLibre paint (avoids string property lookup) */
+const AQI_COLOR_STEP = [
+  'step', ['get', 'aqi'],
+  '#4CAF50', 51,
+  '#8BC34A', 101,
+  '#FFC107', 201,
+  '#FF5722', 301,
+  '#F44336', 401,
+  '#B71C1C'
+];
+
 /* ── Main init ───────────────────────────────────────────────────── */
 (async function init() {
 
@@ -718,7 +756,6 @@ function showBanner(msg, type = 'error') {
     container: 'map',
     style: {
       version: 8,
-      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         osm: {
           type: 'raster',
@@ -734,17 +771,14 @@ function showBanner(msg, type = 'error') {
         source: 'osm',
         paint: {
           'raster-brightness-min': 0,
-          'raster-brightness-max': 0.25,
-          'raster-saturation': -0.6,
-          'raster-contrast': 0.2,
+          'raster-brightness-max': 0.22,
+          'raster-saturation': -0.7,
+          'raster-contrast': 0.15,
         },
       }],
     },
-    /* Fit to India's bounding box on load */
-    bounds: [[68.1, 6.5], [97.4, 37.1]],
-    fitBoundsOptions: { padding: 20 },
-    /* Restrict panning so the user stays on India */
-    maxBounds: [[55, 1], [108, 42]],
+    center: [82.9, 22.5],
+    zoom: 4.5,
     minZoom: 4,
     maxZoom: 14,
   });
@@ -755,7 +789,7 @@ function showBanner(msg, type = 'error') {
     trackUserLocation: false,
   }), 'top-right');
 
-  /* Fetch data + wait for map load in parallel */
+  /* Fetch data in parallel with map load */
   const usingDemo = CPCB_API_KEY === 'YOUR_API_KEY_HERE';
   let stations = [];
 
@@ -780,56 +814,73 @@ function showBanner(msg, type = 'error') {
 
   stations = fetchedStations;
 
-  /* ── Add GeoJSON source + layers (GPU-rendered — no jitter on pan) */
-  map.addSource('stations', {
+  /* Fit to India and lock panning after style loads */
+  map.fitBounds([[68.1, 6.5], [97.4, 37.1]], { padding: 24, animate: false });
+  map.setMaxBounds([[64, 4], [100, 40]]);
+
+  /* ── Dark mask over non-India area ─────────────────────────────── */
+  map.addSource('india-mask', { type: 'geojson', data: INDIA_MASK_GEOJSON });
+  map.addLayer({
+    id: 'india-mask-fill',
+    type: 'fill',
+    source: 'india-mask',
+    paint: {
+      'fill-color': '#0A0F0D',
+      'fill-opacity': 0.82,
+    },
+  });
+  /* Subtle green border around India */
+  map.addSource('india-border', {
     type: 'geojson',
-    data: buildGeoJSON(stations, -1), // -1 = no nearest highlighted yet
+    data: {
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: INDIA_MASK_GEOJSON.geometry.coordinates[1] },
+    },
+  });
+  map.addLayer({
+    id: 'india-border-line',
+    type: 'line',
+    source: 'india-border',
+    paint: {
+      'line-color': '#2D4A32',
+      'line-width': 1.5,
+      'line-opacity': 0.9,
+    },
   });
 
-  /* Regular circles */
+  /* ── AQI station layers ─────────────────────────────────────────── */
+  map.addSource('stations', {
+    type: 'geojson',
+    data: buildGeoJSON(stations, -1),
+  });
+
+  /* All stations — step expression on aqi integer (most reliable approach) */
   map.addLayer({
     id: 'aqi-circles',
     type: 'circle',
     source: 'stations',
     filter: ['!=', ['get', 'nearest'], true],
     paint: {
-      'circle-radius':        ['interpolate', ['linear'], ['zoom'], 4, 9, 10, 17],
-      'circle-color':         ['get', 'color'],
-      'circle-stroke-color':  'rgba(255,255,255,0.25)',
-      'circle-stroke-width':  1.5,
-      'circle-opacity':       0.9,
+      'circle-radius':       ['interpolate', ['linear'], ['zoom'], 4, 9, 10, 16],
+      'circle-color':        AQI_COLOR_STEP,
+      'circle-stroke-color': 'rgba(255,255,255,0.3)',
+      'circle-stroke-width': 1.5,
+      'circle-opacity':      0.92,
     },
   });
 
-  /* Nearest station — larger, white border */
+  /* Nearest station — larger with white ring */
   map.addLayer({
     id: 'aqi-nearest',
     type: 'circle',
     source: 'stations',
     filter: ['==', ['get', 'nearest'], true],
     paint: {
-      'circle-radius':        ['interpolate', ['linear'], ['zoom'], 4, 13, 10, 23],
-      'circle-color':         ['get', 'color'],
-      'circle-stroke-color':  '#ffffff',
-      'circle-stroke-width':  3,
-      'circle-opacity':       1,
-    },
-  });
-
-  /* AQI number labels on top */
-  map.addLayer({
-    id: 'aqi-labels',
-    type: 'symbol',
-    source: 'stations',
-    layout: {
-      'text-field':              ['get', 'label'],
-      'text-font':               ['Open Sans Bold', 'Arial Unicode MS Bold'],
-      'text-size':               ['interpolate', ['linear'], ['zoom'], 4, 8, 10, 11],
-      'text-allow-overlap':      true,
-      'text-ignore-placement':   true,
-    },
-    paint: {
-      'text-color': '#ffffff',
+      'circle-radius':       ['interpolate', ['linear'], ['zoom'], 4, 13, 10, 22],
+      'circle-color':        AQI_COLOR_STEP,
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 3,
+      'circle-opacity':      1,
     },
   });
 
@@ -865,7 +916,7 @@ function showBanner(msg, type = 'error') {
   if ('geolocation' in navigator) {
     navigator.geolocation.getCurrentPosition(
       pos  => findNearest(pos.coords.latitude, pos.coords.longitude),
-      _err => findNearest(28.6, 77.2), // default: Delhi
+      _err => findNearest(28.6, 77.2),
       { timeout: 5000 }
     );
   } else {
