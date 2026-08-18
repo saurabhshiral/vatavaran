@@ -181,8 +181,8 @@ function renderStatePaths(stateAqi) {
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     el.setAttribute('d', d);
     el.setAttribute('class', 'state-path');
-    el.setAttribute('fill', avg ? aqiColor(avg) : 'transparent');
-    el.setAttribute('fill-opacity', avg ? '0.22' : '0');
+    el.setAttribute('fill', avg ? aqiColor(avg) : '#2A3D30');
+    el.setAttribute('fill-opacity', avg ? '0.22' : '0.35');
     if (avg) {
       const dn = normName.replace(/\b\w/g, c => c.toUpperCase());
       el.addEventListener('mouseenter', e => { el.setAttribute('fill-opacity','0.42'); showTip(e,`${dn} · Avg AQI <strong>${avg}</strong> · ${aqiVerdict(avg)}`); });
@@ -355,7 +355,7 @@ function updateStats(stations, total = null) {
     statCount.textContent='—'; statOfTotal.textContent=''; statWorst.textContent='—'; statBest.textContent='—'; return;
   }
   statCount.textContent = stations.length;
-  statOfTotal.textContent = total ? ` of ${total}` : '';
+  statOfTotal.textContent = total > 0 ? ` of ${total}` : '';
   const sorted = [...stations].sort((a,b)=>b.aqi-a.aqi);
   const w = sorted[0], b = sorted[sorted.length-1];
   statWorst.textContent = `${w.city} · ${w.aqi}`;
