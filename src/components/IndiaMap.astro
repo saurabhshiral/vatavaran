@@ -98,12 +98,15 @@ const strip       = document.getElementById('filter-strip');
 const stateSelect = document.getElementById('filter-state');
 const citySelect  = document.getElementById('filter-city');
 const resetEl     = document.getElementById('filter-reset');
-const loadingEl   = document.getElementById('loading-overlay');
 const bannerEl    = document.getElementById('banner');
 const statCount   = document.getElementById('stat-count');
 const statOfTotal = document.getElementById('stat-of-total');
 const statWorst   = document.getElementById('stat-worst');
 const statBest    = document.getElementById('stat-best');
+
+// Show loading overlay immediately (overlay starts hidden in CSS, shown here via style)
+const _loEl = document.getElementById('loading-overlay');
+if (_loEl) _loEl.style.display = 'flex';
 
 // ── ViewBox pan/zoom ──
 let vb = { x: 0, y: 0, w: SVG_W, h: SVG_H };
@@ -436,7 +439,7 @@ try { applyVB(); } catch(e) { console.error('[IndiaMap] applyVB:', e); }
 const __api = { renderMarkers, updateStats, showBanner, project,
   hideLoading: () => {
     const el = document.getElementById('loading-overlay');
-    if (el) el.classList.add('hidden');
+    if (el) el.style.display = 'none';
   }
 };
 window.__vatavaran = __api;

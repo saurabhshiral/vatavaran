@@ -109,8 +109,7 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
       width: 100%; transition: color .15s; }
     #filter-reset:hover { color: var(--text); }
     #loading-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 500;
-      display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
-    #loading-overlay.hidden { display: none; }
+      display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
     .spinner { width: 32px; height: 32px; border: 3px solid var(--border);
       border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -136,7 +135,7 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
 </div>
 <div id="loading-overlay"><div class="spinner"></div><span>Loading data…</span></div>
 <div id="banner"></div>
-<script>setTimeout(function(){var e=document.getElementById('loading-overlay');if(e)e.classList.add('hidden');},20000);</script>
+<script>setTimeout(function(){var e=document.getElementById('loading-overlay');if(e)e.style.display='none';},20000);</script>
 <slot />
 </body>
 </html>
