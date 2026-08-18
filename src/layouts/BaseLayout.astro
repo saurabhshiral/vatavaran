@@ -77,8 +77,9 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
     #india-svg { width: 100%; height: 100%; display: block; }
     .state-path { stroke: #2D4A32; stroke-width: 0.8; stroke-opacity: 0.7; transition: fill-opacity .12s; }
     .station-dot { r: var(--dot-r, 6); stroke: rgba(255,255,255,.25); stroke-width: var(--dot-stroke-w, 1.5); cursor: pointer; fill-opacity: .92; }
-    .station-label { display: none; fill: var(--text); fill-opacity: .88;
-      font-family: 'Space Grotesk', sans-serif; font-weight: 500; pointer-events: none; }
+    .station-label { display: none; fill: var(--text); fill-opacity: .9;
+      font-family: 'Space Grotesk', sans-serif; font-weight: 600; pointer-events: none;
+      stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; paint-order: stroke fill; }
     #india-svg.detail-mode .station-label { display: block; }
     .cluster-outer { fill-opacity: .3; cursor: pointer; }
     .cluster-inner { fill-opacity: .85; cursor: pointer; stroke: rgba(255,255,255,.3); stroke-width: 1; }
