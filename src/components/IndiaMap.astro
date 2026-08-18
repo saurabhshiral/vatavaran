@@ -361,6 +361,7 @@ function updateStats(stations, total = null) {
 
 // ── Banner ──
 function showBanner(msg) {
+  if (!bannerEl) return;
   bannerEl.textContent = msg; bannerEl.style.display = 'block';
   setTimeout(() => bannerEl.style.display='none', 6000);
 }
@@ -431,9 +432,14 @@ function renderMarkers(stations) {
 }
 
 // ── Fire mapready (expose on window first to fix module-script race) ──
-applyVB();
+try { applyVB(); } catch(e) { console.error('[IndiaMap] applyVB:', e); }
 const __api = { renderMarkers, updateStats, showBanner, project,
-  hideLoading: () => loadingEl.classList.add('hidden') };
+  hideLoading: () => {
+    const el = document.getElementById('loading-overlay');
+    if (el) el.classList.add('hidden');
+  }
+};
 window.__vatavaran = __api;
-document.dispatchEvent(new CustomEvent('mapready', { detail: __api }));
+try { document.dispatchEvent(new CustomEvent('mapready', { detail: __api })); }
+catch(e) { console.error('[IndiaMap] mapready:', e); }
 </script>

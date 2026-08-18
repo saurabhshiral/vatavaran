@@ -95,7 +95,7 @@ async function initVayu(api) {
     api.renderMarkers(DEMO_STATIONS);
     api.updateStats(DEMO_STATIONS);
   } finally {
-    api.hideLoading();
+    try { api.hideLoading(); } catch(e) { const el=document.getElementById('loading-overlay'); if(el)el.classList.add('hidden'); }
   }
 }
 

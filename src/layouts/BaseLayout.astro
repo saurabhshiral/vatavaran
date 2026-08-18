@@ -136,6 +136,7 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
 </div>
 <div id="loading-overlay"><div class="spinner"></div><span>Loading data…</span></div>
 <div id="banner"></div>
+<script>setTimeout(function(){var e=document.getElementById('loading-overlay');if(e)e.classList.add('hidden');},20000);</script>
 <slot />
 </body>
 </html>
