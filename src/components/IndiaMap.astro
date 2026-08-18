@@ -175,13 +175,33 @@ function buildClusters(stations) {
       byState[s.state].aqiSum += s.aqi;
       byState[s.state].count++;
     });
-    return Object.entries(byState).map(([, d]) => {
+    const cls = Object.entries(byState).map(([, d]) => {
       const avgAqi = Math.round(d.aqiSum / d.count);
       const geo = d.code && STATE_CENTROIDS[d.code];
       if (!geo) return null;
       const [cx, cy] = project(geo[0], geo[1]);
       return { cx, cy, aqi: avgAqi, count: d.count, station: null, members: [], label: avgAqi, isState: true };
     }).filter(Boolean);
+    // Iteratively push overlapping state bubbles apart (handles dense north-India states)
+    const minSep = 44 / pxPerUnit;
+    for (let iter = 0; iter < 60; iter++) {
+      let moved = false;
+      for (let i = 0; i < cls.length; i++) {
+        for (let j = i + 1; j < cls.length; j++) {
+          const dx = cls[j].cx - cls[i].cx, dy = cls[j].cy - cls[i].cy;
+          const d2 = dx*dx + dy*dy;
+          if (d2 < minSep*minSep && d2 > 0.01) {
+            const d = Math.sqrt(d2), push = (minSep - d) * 0.4;
+            const nx = dx/d, ny = dy/d;
+            cls[i].cx -= nx*push; cls[i].cy -= ny*push;
+            cls[j].cx += nx*push; cls[j].cy += ny*push;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    return cls;
   }
 
   const CLUSTER_PX = 28;
@@ -291,7 +311,7 @@ function renderClusters(clusters) {
       // Cluster bubble
       // Cluster radius: target screen pixels → SVG units
       const rSvg = cl.isState
-        ? Math.max(14, Math.min(22, 20 + Math.log(Math.max(1, cl.count)) * 1.5)) / pxPerUnit
+        ? Math.max(10, Math.min(14, 12 + Math.log(Math.max(1, cl.count)) * 0.8)) / pxPerUnit
         : (16 + Math.log(cl.count) * 5) / pxPerUnit;
       const outer = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       outer.setAttribute('cx', '0'); outer.setAttribute('cy', '0');
