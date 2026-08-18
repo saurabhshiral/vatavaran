@@ -313,14 +313,17 @@ const CPCB_RESOURCE_ID = '3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69';
 const CPCB_API_URL     = `https://api.data.gov.in/resource/${CPCB_RESOURCE_ID}`;
 const API_PAGE_LIMIT   = 500;
 
-/* ── Projection (equirectangular fitted to India) ── */
+/* ── Projection (Web Mercator — matches standard India map orientation) ── */
 const SVG_W = 612, SVG_H = 696;
 const LNG0 = 68.1, LNG1 = 97.4, LAT0 = 6.5, LAT1 = 37.1;
+
+function _merc(lat) { return Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)); }
+const MERC0 = _merc(LAT0), MERC1 = _merc(LAT1);
 
 function project(lat, lng) {
   return [
     (lng - LNG0) / (LNG1 - LNG0) * SVG_W,
-    (LAT1 - lat) / (LAT1 - LAT0) * SVG_H,
+    (MERC1 - _merc(lat)) / (MERC1 - MERC0) * SVG_H,
   ];
 }
 
@@ -562,8 +565,33 @@ function refreshZoom() {
   const fs = Math.max(5, Math.min(18, 12 / pxPerUnit));
   svgEl.style.setProperty('--dot-r',   r.toFixed(2));
   svgEl.style.setProperty('--label-fs', `${fs.toFixed(2)}px`);
-  /* Show city labels at ≈1.8× zoom or deeper */
   svgEl.classList.toggle('detail-mode', vb.w < SVG_W * 0.55);
+  refreshLabels();
+}
+
+/* Show labels only for highest-AQI stations whose labels don't overlap (55px min gap) */
+function refreshLabels() {
+  const displayW = mapWrap.getBoundingClientRect().width || 800;
+  const pxPerUnit = displayW / vb.w;
+  const MIN_PX = 55;
+  const groups = Array.from(markerLayer.querySelectorAll('g[data-aqi]'));
+  if (!groups.length) return;
+
+  /* Sort highest AQI first so they win collisions */
+  groups.sort((a, b) => +b.dataset.aqi - +a.dataset.aqi);
+
+  const accepted = [];
+  groups.forEach(g => {
+    const sx = +g.dataset.svgx, sy = +g.dataset.svgy;
+    const tooClose = accepted.some(p => {
+      const dx = (sx - p.sx) * pxPerUnit;
+      const dy = (sy - p.sy) * pxPerUnit;
+      return dx * dx + dy * dy < MIN_PX * MIN_PX;
+    });
+    const txt = g.querySelector('text');
+    if (txt) txt.style.visibility = tooClose ? 'hidden' : '';
+    if (!tooClose) accepted.push({ sx, sy });
+  });
 }
 
 function applyVB() {
@@ -693,6 +721,9 @@ function renderMarkers(list) {
     const [cx, cy] = project(s.lat, s.lng);
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('transform', `translate(${cx.toFixed(1)},${cy.toFixed(1)})`);
+    g.dataset.aqi  = s.aqi;
+    g.dataset.svgx = cx.toFixed(1);
+    g.dataset.svgy = cy.toFixed(1);
 
     const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     c.setAttribute('cx', '0'); c.setAttribute('cy', '0');
