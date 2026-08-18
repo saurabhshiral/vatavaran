@@ -227,8 +227,10 @@ function renderClusters(clusters) {
           const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
           t.setAttribute('x', '9'); t.setAttribute('y', '4');
           t.setAttribute('class', 'station-label');
-          // SVG presentation attribute = user units (scales with viewBox, unlike CSS px)
-          t.setAttribute('font-size', (14 / pxPerUnit).toFixed(2));
+          // Inline style wins over CSS class. SVG user units (no px suffix) scale with viewBox.
+          // Adaptive: labels grow as you zoom in (14px at overview → 22px deep zoom)
+          const screenFs = Math.min(22, Math.max(14, 9 + pxPerUnit * 1.5));
+          t.setAttribute('font-size', (screenFs / pxPerUnit).toFixed(2));
           t.textContent = `${cl.station.city} · ${cl.aqi}`;
           g.appendChild(t);
         }
@@ -250,8 +252,9 @@ function renderClusters(clusters) {
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       label.setAttribute('x', '0'); label.setAttribute('y', '0');
       label.setAttribute('class', 'cluster-label');
-      // SVG presentation attribute for font-size (user units, not CSS px)
-      label.setAttribute('font-size', (11 / pxPerUnit).toFixed(1));
+      // Adaptive cluster count font, grows with zoom
+      const clusterFs = Math.min(16, Math.max(11, 7 + pxPerUnit));
+      label.setAttribute('font-size', (clusterFs / pxPerUnit).toFixed(1));
       label.textContent = cl.count;
 
       // Click cluster: zoom into it

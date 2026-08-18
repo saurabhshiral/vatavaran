@@ -19,6 +19,9 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <script is:inline>
+    (function(){const t=localStorage.getItem('vat-theme');if(t==='light')document.documentElement.classList.add('light');})();
+  </script>
   {themeCSS && <style set:html={`:root{${themeCSS}}`} />}
   <style is:global>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,6 +30,15 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
       --border: #2D4A32; --text: #E8F5E0; --text-muted: #7DA882; --accent: #4CAF50;
       --nav-h: 56px; --stats-h: 44px; --panel-collapsed: 40px; --panel-expanded: 280px;
     }
+    html.light {
+      --bg: #F2F7F3; --surface: #FFFFFF; --surface-2: #E8F2EA;
+      --border: #B8D4BB; --text: #1A2D1E; --text-muted: #4A7A50; --accent: #2A7D32;
+    }
+    html.light .station-dot { stroke: rgba(0,0,0,.12); }
+    html.light .state-path { stroke: #8AAB8E; }
+    html.light .cluster-inner { stroke: rgba(0,0,0,.2); }
+    html.light nav { background: rgba(242,247,243,0.95); }
+    html.light #state-tip { background: rgba(242,247,243,.98); }
     html, body { height: 100%; background: var(--bg); color: var(--text);
       font-family: 'Space Grotesk', sans-serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
     nav {
@@ -43,6 +55,11 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
     .tabs a.active { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
     .tabs a:not(.active):hover { color: var(--text); }
     .tabs a.dimmed { opacity: .45; cursor: default; pointer-events: none; }
+    .theme-btn { background: none; border: 1px solid var(--border); border-radius: 20px;
+      color: var(--text-muted); cursor: pointer; padding: 4px 10px; font-size: 13px;
+      display: flex; align-items: center; gap: 5px; transition: color .15s, border-color .15s; }
+    .theme-btn:hover { color: var(--text); border-color: var(--text-muted); }
+    .theme-btn svg { width: 14px; height: 14px; fill: currentColor; flex-shrink: 0; }
     #stats-bar {
       position: fixed; top: var(--nav-h); left: 0; right: 0; z-index: 190; height: var(--stats-h);
       display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: nowrap; overflow: hidden;
@@ -128,7 +145,29 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
     <a href={base + '/agni/'} class={activeTab==='agni' ? 'active dimmed' : 'dimmed'}>agni</a>
     <a href={base + '/jal/'}  class={activeTab==='jal'  ? 'active dimmed' : 'dimmed'}>jal</a>
   </div>
+  <button id="theme-toggle" class="theme-btn" title="Toggle light/dark">
+    <svg id="icon-sun" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0-13a1 1 0 0 0 1-1V2a1 1 0 0 0-2 0v1a1 1 0 0 0 1 1zm0 16a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1zM5.22 6.64 4.51 5.93a1 1 0 0 0-1.41 1.41l.71.71a1 1 0 1 0 1.41-1.41zM19.49 18.07l-.71-.71a1 1 0 1 0-1.41 1.41l.71.71a1 1 0 0 0 1.41-1.41zM3 13H2a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2zm20-2h-1a1 1 0 0 0 0 2h1a1 1 0 0 0 0-2zM5.22 17.36a1 1 0 0 0-1.41 1.41l.71.71a1 1 0 0 0 1.41-1.41zM18.78 6.64a1 1 0 0 0 1.41-1.41l-.71-.71a1 1 0 0 0-1.41 1.41z"/></svg>
+    <svg id="icon-moon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+  </button>
 </nav>
+<script is:inline>
+  (function(){
+    var btn=document.getElementById('theme-toggle');
+    var sun=document.getElementById('icon-sun');
+    var moon=document.getElementById('icon-moon');
+    function applyIcons(){
+      var light=document.documentElement.classList.contains('light');
+      if(sun) sun.style.display=light?'none':'block';
+      if(moon) moon.style.display=light?'block':'none';
+    }
+    applyIcons();
+    if(btn) btn.addEventListener('click',function(){
+      var isLight=document.documentElement.classList.toggle('light');
+      localStorage.setItem('vat-theme',isLight?'light':'dark');
+      applyIcons();
+    });
+  })();
+</script>
 <div id="stats-bar">
   <div class="stat-pill"><span id="stat-count" class="val">—</span><span id="stat-of-total" style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--text-muted)"></span><span style="color:var(--text-muted)"> reporting</span></div>
   <div class="stat-pill">Worst: <span id="stat-worst" class="val" style="color:#E93F33">—</span></div>
