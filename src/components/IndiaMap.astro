@@ -88,6 +88,20 @@ const STATE_IDS = {
 };
 function normState(s) { return (s||'').toLowerCase().replace(/&/g,'and').replace(/\s+/g,' ').trim(); }
 
+// Geographic centroids (lat, lng) per state code — used for state-level bubbles
+const STATE_CENTROIDS = {
+  an:[11.74,92.66], ap:[15.91,79.74], ar:[28.22,94.73], as:[26.20,92.94],
+  br:[25.10,85.31], ch:[30.73,76.78], ct:[21.28,81.87], dn:[20.18,73.02],
+  dl:[28.70,77.10], ga:[15.30,74.12], gj:[22.26,71.19], hr:[29.06,76.09],
+  hp:[31.10,77.17], jk:[33.78,76.58], jh:[23.61,85.28], ka:[15.32,75.71],
+  kl:[10.85,76.27], ld:[10.57,72.64], mp:[22.97,78.66], mh:[19.75,75.71],
+  mn:[24.66,93.91], ml:[25.47,91.37], mz:[23.16,92.94], nl:[26.16,94.56],
+  or:[20.95,85.10], py:[11.94,79.81], pb:[31.15,75.34], rj:[27.02,74.22],
+  sk:[27.53,88.51], tn:[11.13,78.66], tg:[18.11,79.02], tr:[23.94,91.99],
+  up:[26.85,80.95], ut:[30.07,79.02], wb:[22.99,87.85],
+};
+const NORM_TO_CODE = Object.fromEntries(Object.entries(STATE_IDS).map(([c, n]) => [n, c]));
+
 // ── DOM refs ──
 const svgEl     = document.getElementById('india-svg');
 const mapWrap   = document.getElementById('map-wrap');
@@ -157,17 +171,17 @@ function buildClusters(stations) {
     const byState = {};
     stations.forEach(s => {
       if (!s.state) return;
-      if (!byState[s.state]) byState[s.state] = { latSum: 0, lngSum: 0, aqiSum: 0, count: 0 };
-      byState[s.state].latSum += s.lat;
-      byState[s.state].lngSum += s.lng;
+      if (!byState[s.state]) byState[s.state] = { code: NORM_TO_CODE[normState(s.state)], aqiSum: 0, count: 0 };
       byState[s.state].aqiSum += s.aqi;
       byState[s.state].count++;
     });
     return Object.entries(byState).map(([, d]) => {
       const avgAqi = Math.round(d.aqiSum / d.count);
-      const [cx, cy] = project(d.latSum / d.count, d.lngSum / d.count);
+      const geo = d.code && STATE_CENTROIDS[d.code];
+      if (!geo) return null;
+      const [cx, cy] = project(geo[0], geo[1]);
       return { cx, cy, aqi: avgAqi, count: d.count, station: null, members: [], label: avgAqi, isState: true };
-    });
+    }).filter(Boolean);
   }
 
   const CLUSTER_PX = 28;
@@ -276,7 +290,9 @@ function renderClusters(clusters) {
     } else {
       // Cluster bubble
       // Cluster radius: target screen pixels → SVG units
-      const rSvg = (16 + Math.log(cl.count) * 5) / pxPerUnit;
+      const rSvg = cl.isState
+        ? Math.max(14, Math.min(22, 20 + Math.log(Math.max(1, cl.count)) * 1.5)) / pxPerUnit
+        : (16 + Math.log(cl.count) * 5) / pxPerUnit;
       const outer = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       outer.setAttribute('cx', '0'); outer.setAttribute('cy', '0');
       outer.setAttribute('r', (rSvg * 1.5).toFixed(2));
@@ -291,7 +307,10 @@ function renderClusters(clusters) {
       label.setAttribute('x', '0'); label.setAttribute('y', '0');
       label.setAttribute('class', 'cluster-label');
       // Adaptive cluster count font, grows with zoom
-      const clusterFs = Math.min(16, Math.max(11, 7 + pxPerUnit));
+      // State bubbles: font scales with bubble radius so AQI number fills it cleanly
+      const clusterFs = cl.isState
+        ? rSvg * pxPerUnit * 0.62
+        : Math.min(16, Math.max(11, 7 + pxPerUnit));
       label.setAttribute('font-size', (clusterFs / pxPerUnit).toFixed(1));
       label.textContent = cl.label ?? cl.count;
 
