@@ -45,7 +45,7 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
     .tabs a.dimmed { opacity: .45; cursor: default; pointer-events: none; }
     #stats-bar {
       position: fixed; top: var(--nav-h); left: 0; right: 0; z-index: 190; height: var(--stats-h);
-      display: flex; align-items: center; justify-content: center; gap: 10px;
+      display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: nowrap; overflow: hidden;
     }
     .stat-pill {
       background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
@@ -87,6 +87,7 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
     .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 4px; }
     .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
     .legend-soi { font-size: 10px; color: var(--text-muted); margin-top: 8px; line-height: 1.4; border-top: 1px solid var(--border); padding-top: 6px; max-width: 180px; }
+    .band-count { color: var(--text-muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
     #filter-panel {
       position: fixed; top: calc(var(--nav-h) + var(--stats-h)); left: 0; bottom: 0; z-index: 180;
       width: var(--panel-collapsed); transition: width .2s; background: var(--surface);
@@ -132,6 +133,8 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
   <div class="stat-pill"><span id="stat-count" class="val">—</span><span id="stat-of-total" style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--text-muted)"></span><span style="color:var(--text-muted)"> reporting</span></div>
   <div class="stat-pill">Worst: <span id="stat-worst" class="val" style="color:#E93F33">—</span></div>
   <div class="stat-pill">Best: <span id="stat-best" class="val" style="color:#55A84F">—</span></div>
+  <div class="stat-pill" id="pill-pm" style="display:none"><span style="color:var(--text-muted)">PM2.5 </span><span id="stat-pm25" class="val">—</span><span style="color:var(--text-muted)"> · PM10 </span><span id="stat-pm10" class="val">—</span></div>
+  <div class="stat-pill" id="pill-updated" style="display:none"><span style="color:var(--text-muted)">As of </span><span id="stat-updated" class="val" style="font-size:12px">—</span></div>
 </div>
 <div id="loading-overlay"><div class="spinner"></div><span>Loading data…</span></div>
 <div id="banner"></div>

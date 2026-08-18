@@ -42,12 +42,12 @@ while ((m = re.exec(svgText)) !== null) statePaths[m[1]] = m[2];
 
 <div id="legend">
   <h4>AQI INDEX</h4>
-  <div class="legend-row"><div class="legend-dot" style="background:#55A84F"></div>0–50 Good</div>
-  <div class="legend-row"><div class="legend-dot" style="background:#A3C853"></div>51–100 Satisfactory</div>
-  <div class="legend-row"><div class="legend-dot" style="background:#FFF833"></div>101–200 Moderate</div>
-  <div class="legend-row"><div class="legend-dot" style="background:#F29C33"></div>201–300 Poor</div>
-  <div class="legend-row"><div class="legend-dot" style="background:#E93F33"></div>301–400 Very Poor</div>
-  <div class="legend-row"><div class="legend-dot" style="background:#AF2D24"></div>401+ Severe</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#55A84F"></div>0–50 Good<span id="band-0" class="band-count"></span></div>
+  <div class="legend-row"><div class="legend-dot" style="background:#A3C853"></div>51–100 Satisfactory<span id="band-1" class="band-count"></span></div>
+  <div class="legend-row"><div class="legend-dot" style="background:#FFF833"></div>101–200 Moderate<span id="band-2" class="band-count"></span></div>
+  <div class="legend-row"><div class="legend-dot" style="background:#F29C33"></div>201–300 Poor<span id="band-3" class="band-count"></span></div>
+  <div class="legend-row"><div class="legend-dot" style="background:#E93F33"></div>301–400 Very Poor<span id="band-4" class="band-count"></span></div>
+  <div class="legend-row"><div class="legend-dot" style="background:#AF2D24"></div>401+ Severe<span id="band-5" class="band-count"></span></div>
   <p class="legend-soi">Boundaries shown are for representational purposes only and do not reflect official Survey of India demarcations.</p>
 </div>
 
@@ -115,13 +115,13 @@ function applyVB() {
   refreshZoom();
 }
 function clampVB() {
-  vb.w = Math.max(80, Math.min(SVG_W, vb.w));
+  vb.w = Math.max(35, Math.min(SVG_W, vb.w));
   vb.h = vb.w * SVG_H / SVG_W;
   vb.x = Math.max(0, Math.min(SVG_W - vb.w, vb.x));
   vb.y = Math.max(0, Math.min(SVG_H - vb.h, vb.y));
 }
 function zoomAround(factor, mx, my) {
-  const nw = Math.max(80, Math.min(SVG_W, vb.w * factor));
+  const nw = Math.max(35, Math.min(SVG_W, vb.w * factor));
   const nh = nw * SVG_H / SVG_W;
   vb.x += mx * (vb.w - nw);
   vb.y += my * (vb.h - nh);
@@ -161,9 +161,9 @@ function refreshZoom() {
   const displayW = mapWrap.getBoundingClientRect().width || 800;
   const pxPerUnit = displayW / vb.w;
   // Target fixed screen-pixel sizes; convert to SVG units via pxPerUnit
-  svgEl.style.setProperty('--dot-r', (5 / pxPerUnit).toFixed(2));
-  svgEl.style.setProperty('--dot-stroke-w', (1.2 / pxPerUnit).toFixed(2));
-  svgEl.style.setProperty('--label-fs', `${(10 / pxPerUnit).toFixed(2)}px`);
+  svgEl.style.setProperty('--dot-r', (7 / pxPerUnit).toFixed(2));
+  svgEl.style.setProperty('--dot-stroke-w', (1.5 / pxPerUnit).toFixed(2));
+  svgEl.style.setProperty('--label-fs', `${(12 / pxPerUnit).toFixed(2)}px`);
   svgEl.classList.toggle('detail-mode', vb.w < SVG_W * 0.55);
   if (_currentStations.length) renderClusters(buildClusters(_currentStations));
 }
@@ -185,7 +185,7 @@ function renderStatePaths(stateAqi) {
     el.setAttribute('fill-opacity', avg ? '0.22' : '0.35');
     if (avg) {
       const dn = normName.replace(/\b\w/g, c => c.toUpperCase());
-      el.addEventListener('mouseenter', e => { el.setAttribute('fill-opacity','0.42'); showTip(e,`${dn} · Avg AQI <strong>${avg}</strong> · ${aqiVerdict(avg)}`); });
+      el.addEventListener('mouseenter', e => { el.setAttribute('fill-opacity','0.42'); showTip(e,`<strong>${dn}</strong> · ${aqiVerdict(avg)} · Avg AQI <strong style="color:${aqiColor(avg)}">${avg}</strong> · ${cnt} station${cnt>1?'s':''}`); });
       el.addEventListener('mousemove', moveTip);
       el.addEventListener('mouseleave', () => { el.setAttribute('fill-opacity','0.22'); hideTip(); });
     }
@@ -234,8 +234,8 @@ function renderClusters(clusters) {
       }
     } else {
       // Cluster bubble
-      // Cluster radius in screen pixels → convert to SVG units
-      const rSvg = (Math.max(10, 10 + Math.log(cl.count) * 4)) / pxPerUnit;
+      // Cluster radius: target screen pixels → SVG units
+      const rSvg = (16 + Math.log(cl.count) * 5) / pxPerUnit;
       const outer = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       outer.setAttribute('cx', '0'); outer.setAttribute('cy', '0');
       outer.setAttribute('r', (rSvg * 1.5).toFixed(2));
@@ -256,8 +256,11 @@ function renderClusters(clusters) {
       [outer, inner].forEach(el => el.addEventListener('click', e => {
         e.stopPropagation();
         if (dragMoved) return;
-        const pad = rSvg * 3;
-        vb.x = cl.cx - pad; vb.y = cl.cy - pad; vb.w = pad * 2; vb.h = vb.w * SVG_H / SVG_W;
+        // Zoom to ~150px around cluster, centered correctly
+        const newW = Math.max(50, 150 / pxPerUnit);
+        const newH = newW * SVG_H / SVG_W;
+        vb.x = cl.cx - newW / 2; vb.y = cl.cy - newH / 2;
+        vb.w = newW; vb.h = newH;
         clampVB(); applyVB();
       }));
       g.appendChild(outer); g.appendChild(inner); g.appendChild(label);
@@ -276,12 +279,16 @@ function showPopup(s) {
   const [sx, sy] = project(s.lat, s.lng);
   const [px, py] = svgToScreen(sx, sy);
   popup.style.left = `${px}px`; popup.style.top = `${py}px`; popup.style.display = 'block';
+  const minMax = (isFinite(s.min) && isFinite(s.max))
+    ? `<span style="font-size:11px;color:var(--text-muted)"> · Range: ${s.min}–${s.max}</span>` : '';
+  const updTime = s.updated && s.updated !== 'demo'
+    ? s.updated.match(/\d{1,2}:\d{2}/)?.[ 0] ?? '' : '';
   popupInner.innerHTML = `<button id="popup-close">×</button>
     <strong>${s.station}</strong><br>
     <span style="color:var(--text-muted)">${s.city}, ${s.state}</span><br><br>
     AQI <strong style="font-size:20px;color:${aqiColor(s.aqi)}">${s.aqi}</strong>
-    <span style="color:var(--text-muted)"> · ${aqiVerdict(s.aqi)}</span><br>
-    <span style="font-size:11px;color:var(--text-muted)">${s.pollutant} · ${s.updated}</span>`;
+    <span style="color:var(--text-muted)"> · ${aqiVerdict(s.aqi)}</span>${minMax}<br>
+    <span style="font-size:11px;color:var(--text-muted)">${s.pollutant}${updTime ? ' · Updated ' + updTime : ''}</span>`;
   document.getElementById('popup-close').onclick = () => popup.style.display = 'none';
 }
 mapWrap.addEventListener('click', () => { if (!dragMoved) popup.style.display = 'none'; });
@@ -350,13 +357,49 @@ function flyToList(list) {
   clampVB(); applyVB();
 }
 
+// ── AQI legend band counts ──
+function updateLegend(stations) {
+  [[0,50,'band-0'],[51,100,'band-1'],[101,200,'band-2'],
+   [201,300,'band-3'],[301,400,'band-4'],[401,9999,'band-5']].forEach(([lo,hi,id]) => {
+    const n = stations.filter(s => s.aqi >= lo && s.aqi <= hi).length;
+    const el = document.getElementById(id);
+    if (el) el.textContent = n > 0 ? ` · ${n}` : '';
+  });
+}
+
 // ── Stats bar ──
 function updateStats(stations, total = null) {
   if (!stations.length) {
-    statCount.textContent='—'; statOfTotal.textContent=''; statWorst.textContent='—'; statBest.textContent='—'; return;
+    statCount.textContent='—'; statOfTotal.textContent='';
+    statWorst.textContent='—'; statBest.textContent='—'; return;
   }
   statCount.textContent = stations.length;
   statOfTotal.textContent = total > 0 ? ` of ${total}` : '';
+
+  // PM2.5 vs PM10 breakdown
+  const pm25 = stations.filter(s => s.pollutant === 'PM2.5').length;
+  const pm10 = stations.filter(s => s.pollutant === 'PM10').length;
+  const pm25El = document.getElementById('stat-pm25');
+  const pm10El = document.getElementById('stat-pm10');
+  const pillPm = document.getElementById('pill-pm');
+  if (pm25El) pm25El.textContent = pm25;
+  if (pm10El) pm10El.textContent = pm10;
+  if (pillPm) pillPm.style.display = pm25 + pm10 > 0 ? '' : 'none';
+
+  // Most recent update time
+  const times = stations.map(s => s.updated).filter(t => t && t !== 'demo');
+  if (times.length) {
+    times.sort();
+    const m = times[times.length - 1].match(/\d{1,2}:\d{2}/);
+    const updEl = document.getElementById('stat-updated');
+    const pillUpd = document.getElementById('pill-updated');
+    if (updEl && m) updEl.textContent = m[0];
+    if (pillUpd) pillUpd.style.display = '';
+  }
+
+  // AQI distribution in legend
+  updateLegend(stations);
+
   const sorted = [...stations].sort((a,b)=>b.aqi-a.aqi);
   const w = sorted[0], b = sorted[sorted.length-1];
   statWorst.textContent = `${w.city} · ${w.aqi}`;

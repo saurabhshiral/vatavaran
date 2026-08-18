@@ -75,7 +75,8 @@ async function fetchCPCBData() {
       if (aqi === null) return;
       const ex = byStation.get(key);
       if (!ex || pri(pid)>pri(ex.pollutant) || (pri(pid)===pri(ex.pollutant)&&aqi>ex.aqi))
-        byStation.set(key, { city, station, state, lat, lng, aqi, pollutant:pid, updated:r.last_update||'' });
+        byStation.set(key, { city, station, state, lat, lng, aqi, pollutant:pid, updated:r.last_update||'',
+          min: parseFloat(r.pollutant_min), max: parseFloat(r.pollutant_max) });
     });
     if (records.length < API_PAGE_LIMIT) break;
     offset += API_PAGE_LIMIT;
