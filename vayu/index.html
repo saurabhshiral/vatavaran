@@ -3,7 +3,7 @@
   vatavaran · vayu — Air Quality Dashboard for India
   ====================================================
   Pure SVG map — no tiles, no map library, no API keys
-  State boundaries: DataMeet Admin2.json (SOI-referenced)
+  State boundaries: geohacker/india state GeoJSON (SOI disclaimer in legend)
   Station data:     CPCB real-time AQI via data.gov.in
 -->
 <html lang="en">
@@ -130,11 +130,21 @@
     }
 
     .station-dot {
+      r: var(--dot-r, 6);
       stroke: rgba(255,255,255,0.25); stroke-width: 1.5;
       cursor: pointer; fill-opacity: 0.92;
-      transition: r 0.1s, stroke-width 0.1s;
     }
-    .station-dot:hover { stroke: rgba(255,255,255,0.8); stroke-width: 2; fill-opacity: 1; }
+    .station-dot:hover { stroke: rgba(255,255,255,0.9); stroke-width: 2; fill-opacity: 1; }
+
+    /* City label — visible only when zoomed in */
+    .station-label {
+      display: none;
+      font-size: var(--label-fs, 7px);
+      fill: var(--text); fill-opacity: 0.88;
+      font-family: 'Space Grotesk', sans-serif; font-weight: 500;
+      pointer-events: none;
+    }
+    #india-svg.detail-mode .station-label { display: block; }
 
     /* ── State hover tooltip ── */
     #state-tip {
@@ -544,8 +554,21 @@ const svgEl  = document.getElementById('india-svg');
 const mapWrap = document.getElementById('map-wrap');
 let vb = { x: 0, y: 0, w: SVG_W, h: SVG_H };
 
+/* Keep dots ~7px and labels ~12px on screen regardless of zoom level */
+function refreshZoom() {
+  const displayW = mapWrap.getBoundingClientRect().width || 800;
+  const pxPerUnit = displayW / vb.w;
+  const r  = Math.max(2.5, Math.min(8, 7 / pxPerUnit));
+  const fs = Math.max(5, Math.min(18, 12 / pxPerUnit));
+  svgEl.style.setProperty('--dot-r',   r.toFixed(2));
+  svgEl.style.setProperty('--label-fs', `${fs.toFixed(2)}px`);
+  /* Show city labels at ≈1.8× zoom or deeper */
+  svgEl.classList.toggle('detail-mode', vb.w < SVG_W * 0.55);
+}
+
 function applyVB() {
   svgEl.setAttribute('viewBox', `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
+  refreshZoom();
 }
 function clampVB() {
   vb.w = Math.max(80, Math.min(SVG_W, vb.w));
@@ -604,7 +627,8 @@ mapWrap.addEventListener('touchmove', e => {
     clampVB(); applyVB();
   }
 }, { passive: false });
-mapWrap.addEventListener('touchend', () => { touch0 = null; });
+mapWrap.addEventListener('touchend',    () => { touch0 = null; });
+mapWrap.addEventListener('touchcancel', () => { touch0 = null; });
 
 /* Zoom buttons */
 document.getElementById('zoom-in').onclick  = () => zoomAround(1/1.5, 0.5, 0.5);
@@ -667,19 +691,25 @@ function renderMarkers(list) {
   markerLayer.innerHTML = '';
   list.forEach(s => {
     const [cx, cy] = project(s.lat, s.lng);
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${cx.toFixed(1)},${cy.toFixed(1)})`);
+
     const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    c.setAttribute('cx', cx.toFixed(1));
-    c.setAttribute('cy', cy.toFixed(1));
-    c.setAttribute('r', '6');
+    c.setAttribute('cx', '0'); c.setAttribute('cy', '0');
     c.setAttribute('fill', aqiColor(s.aqi));
     c.setAttribute('class', 'station-dot');
-    c.addEventListener('click', e => {
-      e.stopPropagation();
-      if (dragMoved) return;
-      showPopup(s);
-    });
-    markerLayer.appendChild(c);
+    c.addEventListener('click', e => { e.stopPropagation(); if (dragMoved) return; showPopup(s); });
+
+    /* City label — shown when zoomed in */
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', '9'); t.setAttribute('y', '4');
+    t.setAttribute('class', 'station-label');
+    t.textContent = `${s.city} · ${s.aqi}`;
+
+    g.appendChild(c); g.appendChild(t);
+    markerLayer.appendChild(g);
   });
+  refreshZoom(); /* apply current dot-r + label visibility */
 }
 
 /* Close popup on map click */
@@ -703,7 +733,7 @@ mapWrap.addEventListener('click', () => { if (!dragMoved) popup.style.display = 
         return DEMO_STATIONS;
       }
     })(),
-    fetch('https://raw.githubusercontent.com/datameet/maps/master/States/Admin2.json')
+    fetch('https://raw.githubusercontent.com/geohacker/india/master/state/india_state.geojson')
       .then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
 
@@ -809,6 +839,7 @@ mapWrap.addEventListener('click', () => { if (!dragMoved) popup.style.display = 
 
     const filtered = st ? stations.filter(s => s.state === st) : stations;
     renderMarkers(filtered);
+    updateStats(filtered);
 
     if (st) {
       const bounds = stateSVGBounds[normState(st)];
@@ -833,6 +864,7 @@ mapWrap.addEventListener('click', () => { if (!dragMoved) popup.style.display = 
     let filtered = st ? stations.filter(s => s.state === st) : stations;
     if (city) filtered = filtered.filter(s => s.city === city);
     renderMarkers(filtered);
+    updateStats(filtered);
     if (city) flyToList(filtered);
     popup.style.display = 'none';
   });
@@ -841,6 +873,7 @@ mapWrap.addEventListener('click', () => { if (!dragMoved) popup.style.display = 
     stateSelect.value = '';
     rebuildCities('');
     renderMarkers(stations);
+    updateStats(stations);
     vb = { x: 0, y: 0, w: SVG_W, h: SVG_H }; applyVB();
     popup.style.display = 'none';
   });
