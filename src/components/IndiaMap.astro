@@ -160,10 +160,9 @@ let _currentStations = [];
 function refreshZoom() {
   const displayW = mapWrap.getBoundingClientRect().width || 800;
   const pxPerUnit = displayW / vb.w;
-  // Target fixed screen-pixel sizes; convert to SVG units via pxPerUnit
+  // Dot radius and stroke in SVG user units (CSS r/stroke-width scale with viewBox)
   svgEl.style.setProperty('--dot-r', (7 / pxPerUnit).toFixed(2));
   svgEl.style.setProperty('--dot-stroke-w', (1.5 / pxPerUnit).toFixed(2));
-  svgEl.style.setProperty('--label-fs', `${(12 / pxPerUnit).toFixed(2)}px`);
   svgEl.classList.toggle('detail-mode', vb.w < SVG_W * 0.55);
   if (_currentStations.length) renderClusters(buildClusters(_currentStations));
 }
@@ -228,6 +227,8 @@ function renderClusters(clusters) {
           const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
           t.setAttribute('x', '9'); t.setAttribute('y', '4');
           t.setAttribute('class', 'station-label');
+          // SVG presentation attribute = user units (scales with viewBox, unlike CSS px)
+          t.setAttribute('font-size', (14 / pxPerUnit).toFixed(2));
           t.textContent = `${cl.station.city} · ${cl.aqi}`;
           g.appendChild(t);
         }
@@ -249,7 +250,8 @@ function renderClusters(clusters) {
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       label.setAttribute('x', '0'); label.setAttribute('y', '0');
       label.setAttribute('class', 'cluster-label');
-      label.style.fontSize = `${(10 / pxPerUnit).toFixed(1)}px`;
+      // SVG presentation attribute for font-size (user units, not CSS px)
+      label.setAttribute('font-size', (11 / pxPerUnit).toFixed(1));
       label.textContent = cl.count;
 
       // Click cluster: zoom into it
