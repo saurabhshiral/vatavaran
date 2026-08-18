@@ -12,8 +12,6 @@
   3. After logging in, go to https://data.gov.in/user/me and copy your API key.
   4. Replace the placeholder value in the CPCB_API_KEY constant below.
   5. No payment required — the key is free for non-commercial use.
-
-  The site works without a key (shows demo markers) but live data requires one.
 -->
 <html lang="en">
 <head>
@@ -27,33 +25,27 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 
-  <!-- MapLibre GL JS -->
-  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    /* ── Reset & base ───────────────────────────────────────────────── */
+    /* ── Reset ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:          #0A0F0D;
-      --surface:     #1A2E1F;
-      --surface-2:   #243828;
-      --border:      #2D4A32;
-      --text:        #E8F5E0;
-      --text-muted:  #7DA882;
-      --accent:      #4CAF50;
+      --bg:           #0A0F0D;
+      --surface:      #1A2E1F;
+      --surface-2:    #243828;
+      --border:       #2D4A32;
+      --text:         #E8F5E0;
+      --text-muted:   #7DA882;
+      --accent:       #4CAF50;
 
-      /* AQI colour scale */
-      --aqi-good:      #4CAF50;
-      --aqi-satisf:    #8BC34A;
-      --aqi-moderate:  #FFC107;
-      --aqi-poor:      #FF5722;
-      --aqi-verypoor:  #F44336;
-      --aqi-severe:    #B71C1C;
-
-      --nav-h: 56px;
-      --card-w: 280px;
+      --nav-h:           56px;
+      --stats-h:         44px;
+      --panel-collapsed: 40px;
+      --panel-expanded:  280px;
     }
 
     html, body {
@@ -62,15 +54,16 @@
       color: var(--text);
       font-family: 'Space Grotesk', sans-serif;
       -webkit-font-smoothing: antialiased;
+      overflow: hidden;
     }
 
-    /* ── Nav ────────────────────────────────────────────────────────── */
+    /* ── Nav ── */
     nav {
       position: fixed;
       top: 0; left: 0; right: 0;
-      z-index: 100;
+      z-index: 200;
       height: var(--nav-h);
-      background: rgba(10, 15, 13, 0.92);
+      background: rgba(10, 15, 13, 0.95);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
@@ -81,215 +74,231 @@
     }
 
     .wordmark {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: -0.5px;
-      color: var(--text);
-      text-decoration: none;
+      font-size: 18px; font-weight: 600; letter-spacing: -0.5px;
+      color: var(--text); text-decoration: none;
     }
-
     .wordmark span { color: var(--accent); }
 
-    .tabs {
+    .tabs { display: flex; gap: 4px; }
+    .tabs a {
+      font-size: 13px; font-weight: 500; letter-spacing: 0.3px;
+      text-decoration: none; padding: 6px 14px; border-radius: 20px;
+      transition: background 0.15s, color 0.15s; color: var(--text-muted);
+    }
+    .tabs a.active { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+    .tabs a:not(.active):hover { color: var(--text); }
+    .tabs a.dimmed { opacity: 0.45; cursor: default; pointer-events: none; }
+
+    /* ── Stats bar ── */
+    #stats-bar {
+      position: fixed;
+      top: var(--nav-h); left: 0; right: 0;
+      z-index: 190;
+      height: var(--stats-h);
+      background: rgba(10, 15, 13, 0.90);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
       display: flex;
-      gap: 4px;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 0 16px;
     }
 
-    .tabs a {
-      font-size: 13px;
-      font-weight: 500;
-      letter-spacing: 0.3px;
-      text-decoration: none;
-      padding: 6px 14px;
+    .stats-pill {
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 4px 12px;
       border-radius: 20px;
-      transition: background 0.15s, color 0.15s;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pill-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    /* ── Filter panel ── */
+    #filter-panel {
+      position: fixed;
+      left: 0;
+      top: calc(var(--nav-h) + var(--stats-h));
+      bottom: 0;
+      z-index: 80;
+      width: var(--panel-collapsed);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+      display: flex;
+    }
+
+    #filter-panel.expanded { width: var(--panel-expanded); }
+
+    #filter-strip {
+      width: var(--panel-collapsed);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      gap: 10px;
+      padding: 0;
+    }
+
+    #filter-strip:hover .filter-label,
+    #filter-strip:hover .filter-arrow { color: var(--text); }
+
+    .filter-label {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      transition: color 0.15s;
+      user-select: none;
+    }
+
+    .filter-arrow {
+      font-size: 13px;
+      color: var(--text-muted);
+      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s;
+      user-select: none;
+      line-height: 1;
+    }
+
+    #filter-panel.expanded .filter-arrow { transform: rotate(180deg); }
+
+    #filter-content {
+      flex: 1;
+      padding: 20px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s;
+      min-width: calc(var(--panel-expanded) - var(--panel-collapsed));
+    }
+
+    #filter-panel.expanded #filter-content {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .filter-heading {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .filter-field { display: flex; flex-direction: column; gap: 6px; }
+
+    .filter-field label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
       color: var(--text-muted);
     }
 
-    .tabs a.active {
+    .filter-select {
       background: var(--surface-2);
-      color: var(--text);
       border: 1px solid var(--border);
-    }
-
-    .tabs a:not(.active):hover {
+      border-radius: 8px;
       color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      padding: 8px 28px 8px 10px;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237DA882' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      cursor: pointer;
+      width: 100%;
     }
 
-    .tabs a.dimmed {
-      opacity: 0.45;
-      cursor: default;
-      pointer-events: none;
-    }
+    .filter-select:focus { outline: none; border-color: var(--accent); }
+    .filter-select option { background: var(--surface-2); }
 
-    /* ── Map container ──────────────────────────────────────────────── */
+    .filter-reset {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-decoration: underline;
+      cursor: pointer;
+      text-align: right;
+      transition: color 0.15s;
+      margin-top: 4px;
+    }
+    .filter-reset:hover { color: var(--text); }
+
+    /* ── Map ── */
     #map {
       position: fixed;
-      top: var(--nav-h);
+      top: calc(var(--nav-h) + var(--stats-h));
       left: 0; right: 0; bottom: 0;
     }
 
-    /* MapLibre attribution */
-    .maplibregl-ctrl-attrib { font-size: 10px !important; }
-    .maplibregl-ctrl-bottom-right { bottom: 4px !important; }
+    .leaflet-control-attribution { font-size: 10px !important; }
+    .leaflet-container { background: var(--bg); }
 
-    /* ── Popup ──────────────────────────────────────────────────────── */
-    .maplibregl-popup-content {
+    /* ── State hover tooltip ── */
+    .state-tooltip {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 8px !important;
+      padding: 6px 10px !important;
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-size: 12px !important;
+      color: var(--text) !important;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+      white-space: nowrap;
+    }
+    .state-tooltip::before { display: none !important; }
+
+    /* ── Station popup ── */
+    .leaflet-popup-content-wrapper {
       background: var(--surface) !important;
       border: 1px solid var(--border) !important;
       border-radius: 12px !important;
-      padding: 16px !important;
-      min-width: 200px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
-      font-family: 'Space Grotesk', sans-serif;
-      color: var(--text);
+      padding: 0 !important;
     }
+    .leaflet-popup-content { margin: 0 !important; font-family: 'Space Grotesk', sans-serif; color: var(--text); min-width: 200px; }
+    .leaflet-popup-tip { background: var(--surface) !important; }
+    .leaflet-popup-close-button { color: var(--text-muted) !important; font-size: 18px !important; top: 8px !important; right: 10px !important; }
 
-    .maplibregl-popup-tip {
-      border-top-color: var(--surface) !important;
-      border-bottom-color: var(--surface) !important;
-    }
-
-    .maplibregl-popup-close-button {
-      color: var(--text-muted) !important;
-      font-size: 18px !important;
-      top: 8px !important;
-      right: 10px !important;
-    }
-
-    .popup-city {
-      font-size: 15px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: var(--text);
-    }
-
-    .popup-aqi-row {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-      margin-bottom: 4px;
-    }
-
-    .popup-aqi-val {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 36px;
-      font-weight: 700;
-      line-height: 1;
-    }
-
-    .popup-aqi-label {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-    }
-
-    .popup-verdict {
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 10px;
-    }
-
-    .popup-meta {
-      font-size: 11px;
-      color: var(--text-muted);
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      border-top: 1px solid var(--border);
-      padding-top: 10px;
-      margin-top: 2px;
-    }
-
+    .popup-inner { padding: 16px 18px; }
+    .popup-city { font-size: 15px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+    .popup-aqi-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+    .popup-aqi-val { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 700; line-height: 1; }
+    .popup-aqi-label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    .popup-verdict { font-size: 13px; font-weight: 500; margin-bottom: 10px; }
+    .popup-meta { font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 10px; margin-top: 2px; display: flex; flex-direction: column; gap: 3px; }
     .popup-meta span { display: flex; gap: 4px; }
     .popup-meta strong { color: var(--text); }
 
-    /* ── Nearest station card (bottom-left) ─────────────────────────── */
-    #nearest-card {
-      position: fixed;
-      bottom: 24px;
-      left: 20px;
-      z-index: 90;
-      width: var(--card-w);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 16px 18px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      transition: transform 0.3s, opacity 0.3s;
-    }
-
-    #nearest-card.hidden {
-      transform: translateY(20px);
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .card-label {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: var(--text-muted);
-      margin-bottom: 6px;
-    }
-
-    .card-city {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 10px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .card-aqi-row {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      margin-bottom: 6px;
-    }
-
-    .card-aqi-num {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 52px;
-      font-weight: 700;
-      line-height: 1;
-    }
-
-    .card-aqi-unit {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .card-verdict {
-      font-size: 14px;
-      font-weight: 500;
-      margin-bottom: 10px;
-    }
-
-    .card-pollutant {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-bottom: 10px;
-    }
-
-    .card-updated {
-      font-size: 10px;
-      color: var(--text-muted);
-      border-top: 1px solid var(--border);
-      padding-top: 8px;
-    }
-
-    /* ── Legend ─────────────────────────────────────────────────────── */
+    /* ── Legend ── */
     #legend {
       position: fixed;
-      bottom: 24px;
-      right: 20px;
+      bottom: 24px; right: 20px;
       z-index: 90;
       background: var(--surface);
       border: 1px solid var(--border);
@@ -297,112 +306,43 @@
       padding: 12px 14px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
+    .legend-title { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11px; color: var(--text); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
-    .legend-title {
-      font-size: 9px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-    }
-
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 5px;
-      font-size: 11px;
-      color: var(--text);
-    }
-
-    .legend-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    /* ── Loading / error overlays ───────────────────────────────────── */
+    /* ── Loading ── */
     #loading-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 200;
+      position: fixed; inset: 0; z-index: 300;
       background: var(--bg);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
       transition: opacity 0.5s;
     }
-
-    #loading-overlay.fade-out {
-      opacity: 0;
-      pointer-events: none;
-    }
+    #loading-overlay.fade-out { opacity: 0; pointer-events: none; }
 
     .spinner {
-      width: 36px;
-      height: 36px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
+      width: 36px; height: 36px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
-
     @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 14px; color: var(--text-muted); }
 
-    .loading-text {
-      font-size: 14px;
-      color: var(--text-muted);
-    }
-
+    /* ── Error banner ── */
     #error-banner {
       position: fixed;
-      top: calc(var(--nav-h) + 12px);
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 150;
-      background: #2D1A1A;
-      border: 1px solid #5C2020;
-      border-radius: 10px;
-      padding: 10px 18px;
-      font-size: 13px;
-      color: #FF8A80;
-      max-width: 480px;
-      text-align: center;
-      display: none;
-    }
-
-    /* ── Mobile / responsive ────────────────────────────────────────── */
-    @media (max-width: 600px) {
-      :root { --card-w: calc(100vw - 40px); }
-
-      #nearest-card {
-        bottom: 0;
-        left: 0;
-        right: 0;
-        width: 100%;
-        border-radius: 16px 16px 0 0;
-        border-left: none;
-        border-right: none;
-        border-bottom: none;
-        padding: 18px 20px 28px;
-      }
-
-      #legend {
-        bottom: calc(180px + 24px); /* above the bottom sheet */
-        right: 12px;
-      }
-
-      .card-aqi-num { font-size: 44px; }
+      top: calc(var(--nav-h) + var(--stats-h) + 12px);
+      left: 50%; transform: translateX(-50%);
+      z-index: 250;
+      background: #2D1A1A; border: 1px solid #5C2020; border-radius: 10px;
+      padding: 10px 18px; font-size: 13px; color: #FF8A80;
+      max-width: 480px; text-align: center; display: none;
     }
   </style>
 </head>
 <body>
 
-<!-- ── Navigation ───────────────────────────────────────────────────── -->
+<!-- ── Nav ── -->
 <nav>
   <a class="wordmark" href="../">वाता<span>वरण</span></a>
   <div class="tabs">
@@ -412,23 +352,41 @@
   </div>
 </nav>
 
-<!-- ── Map ──────────────────────────────────────────────────────────── -->
-<div id="map"></div>
-
-<!-- ── Nearest station card ─────────────────────────────────────────── -->
-<div id="nearest-card" class="hidden">
-  <div class="card-label">Nearest station</div>
-  <div class="card-city" id="card-city">—</div>
-  <div class="card-aqi-row">
-    <span class="card-aqi-num" id="card-aqi">—</span>
-    <span class="card-aqi-unit">AQI</span>
-  </div>
-  <div class="card-verdict" id="card-verdict"></div>
-  <div class="card-pollutant" id="card-pollutant"></div>
-  <div class="card-updated" id="card-updated"></div>
+<!-- ── Stats bar ── -->
+<div id="stats-bar">
+  <div class="stats-pill" id="stat-count"><span class="pill-num">—</span>&nbsp;stations reporting</div>
+  <div class="stats-pill" id="stat-worst">Worst:&nbsp;<span class="pill-num" id="stat-worst-val">—</span></div>
+  <div class="stats-pill" id="stat-best">Best:&nbsp;<span class="pill-num" id="stat-best-val">—</span></div>
 </div>
 
-<!-- ── Legend ───────────────────────────────────────────────────────── -->
+<!-- ── Filter panel ── -->
+<div id="filter-panel">
+  <div id="filter-strip">
+    <span class="filter-arrow">⟩</span>
+    <span class="filter-label">Filter</span>
+  </div>
+  <div id="filter-content">
+    <div class="filter-heading">Filter Stations</div>
+    <div class="filter-field">
+      <label for="filter-state">State</label>
+      <select id="filter-state" class="filter-select">
+        <option value="">All States</option>
+      </select>
+    </div>
+    <div class="filter-field">
+      <label for="filter-city">City</label>
+      <select id="filter-city" class="filter-select">
+        <option value="">All Cities</option>
+      </select>
+    </div>
+    <div class="filter-reset" id="filter-reset">Reset filters</div>
+  </div>
+</div>
+
+<!-- ── Map ── -->
+<div id="map"></div>
+
+<!-- ── Legend ── -->
 <div id="legend">
   <div class="legend-title">AQI Index</div>
   <div class="legend-item"><div class="legend-dot" style="background:#4CAF50"></div>0–50 Good</div>
@@ -439,33 +397,29 @@
   <div class="legend-item"><div class="legend-dot" style="background:#B71C1C"></div>401+ Severe</div>
 </div>
 
-<!-- ── Loading overlay ──────────────────────────────────────────────── -->
+<!-- ── Loading overlay ── -->
 <div id="loading-overlay">
   <div class="spinner"></div>
   <div class="loading-text">Loading air quality data…</div>
 </div>
 
-<!-- ── Error banner ─────────────────────────────────────────────────── -->
+<!-- ── Error banner ── -->
 <div id="error-banner"></div>
 
 <script>
 /* ================================================================
    vatavaran · vayu — Air Quality Dashboard
    ================================================================
-
    REPLACE THIS KEY WITH YOUR data.gov.in API KEY
-   ------------------------------------------------
    Get a free key at https://data.gov.in (register → profile → API key)
-   Leave it as 'YOUR_API_KEY_HERE' to run the site with demo data instead.
    ================================================================ */
-const CPCB_API_KEY = '579b464db66ec23bdd0000017f08499ed72e4c027a9c72421819db62'; // ← replace this
+const CPCB_API_KEY = '579b464db66ec23bdd0000017f08499ed72e4c027a9c72421819db62';
 
-/* ── CPCB API config ─────────────────────────────────────────────── */
 const CPCB_RESOURCE_ID = '3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69';
 const CPCB_API_URL     = `https://api.data.gov.in/resource/${CPCB_RESOURCE_ID}`;
 const API_PAGE_LIMIT   = 500;
 
-/* ── AQI colour + verdict helpers ───────────────────────────────── */
+/* ── AQI helpers ── */
 function aqiColor(aqi) {
   if (aqi <= 50)  return '#4CAF50';
   if (aqi <= 100) return '#8BC34A';
@@ -476,39 +430,38 @@ function aqiColor(aqi) {
 }
 
 function aqiVerdict(aqi) {
-  if (aqi <= 50)  return 'Air is Good';
-  if (aqi <= 100) return 'Air is Satisfactory';
-  if (aqi <= 200) return 'Air is Moderate';
-  if (aqi <= 300) return 'Air is Poor';
-  if (aqi <= 400) return 'Air is Very Poor';
-  return 'Air is Severe';
+  if (aqi <= 50)  return 'Good';
+  if (aqi <= 100) return 'Satisfactory';
+  if (aqi <= 200) return 'Moderate';
+  if (aqi <= 300) return 'Poor';
+  if (aqi <= 400) return 'Very Poor';
+  return 'Severe';
 }
 
-/* ── Demo data (shown when no API key is set) ────────────────────── */
-const DEMO_STATIONS = [
-  { city:'Delhi',      station:'ITO',            lat:28.6286, lng:77.2402, aqi:287, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Mumbai',     station:'Bandra',         lat:19.0596, lng:72.8295, aqi:82,  pollutant:'NO2',   updated:'2026-08-17 08:00' },
-  { city:'Bengaluru',  station:'Silk Board',     lat:12.9170, lng:77.6101, aqi:64,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Chennai',    station:'Manali',         lat:13.1657, lng:80.2615, aqi:110, pollutant:'SO2',   updated:'2026-08-17 08:00' },
-  { city:'Kolkata',    station:'Rabindra Sarani',lat:22.5726, lng:88.3639, aqi:198, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Hyderabad',  station:'Bollaram',       lat:17.4974, lng:78.3612, aqi:95,  pollutant:'CO',    updated:'2026-08-17 08:00' },
-  { city:'Ahmedabad',  station:'Maninagar',      lat:22.9963, lng:72.6034, aqi:172, pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Pune',       station:'Katraj',         lat:18.4529, lng:73.8481, aqi:55,  pollutant:'NO2',   updated:'2026-08-17 08:00' },
-  { city:'Lucknow',    station:'Lalbagh',        lat:26.8467, lng:80.9462, aqi:324, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Jaipur',     station:'Shastri Nagar',  lat:26.9124, lng:75.7873, aqi:140, pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Kanpur',     station:'Nehru Nagar',    lat:26.4499, lng:80.3319, aqi:356, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Nagpur',     station:'Civil Lines',    lat:21.1502, lng:79.0956, aqi:88,  pollutant:'CO',    updated:'2026-08-17 08:00' },
-  { city:'Patna',      station:'Danapur',        lat:25.5941, lng:85.1376, aqi:261, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Indore',     station:'Palasia',        lat:22.7196, lng:75.8577, aqi:73,  pollutant:'NO2',   updated:'2026-08-17 08:00' },
-  { city:'Bhopal',     station:'TT Nagar',       lat:23.2599, lng:77.4126, aqi:118, pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Visakhapatnam',station:'Gajuwaka',     lat:17.6868, lng:83.2185, aqi:76,  pollutant:'SO2',   updated:'2026-08-17 08:00' },
-  { city:'Surat',      station:'Athwa',          lat:21.1702, lng:72.8311, aqi:131, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Vadodara',   station:'Makarpura',      lat:22.3072, lng:73.1812, aqi:107, pollutant:'NO2',   updated:'2026-08-17 08:00' },
-  { city:'Amritsar',   station:'Ratanpur',       lat:31.6340, lng:74.8723, aqi:215, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Guwahati',   station:'Pan Bazar',      lat:26.1845, lng:91.7362, aqi:42,  pollutant:'CO',    updated:'2026-08-17 08:00' },
-];
+/* ── CPCB AQI breakpoints (concentration → sub-index) ── */
+const AQI_BREAKPOINTS = {
+  'PM2.5': [[0,30,0,50],[31,60,51,100],[61,90,101,200],[91,120,201,300],[121,250,301,400],[251,500,401,500]],
+  'PM10':  [[0,50,0,50],[51,100,51,100],[101,250,101,200],[251,350,201,300],[351,430,301,400],[431,600,401,500]],
+  'NO2':   [[0,40,0,50],[41,80,51,100],[81,180,101,200],[181,280,201,300],[281,400,301,400],[401,800,401,500]],
+  'SO2':   [[0,40,0,50],[41,80,51,100],[81,380,101,200],[381,800,201,300],[801,1600,301,400],[1601,2620,401,500]],
+  'CO':    [[0,1,0,50],[1.1,2,51,100],[2.1,10,101,200],[10.1,17,201,300],[17.1,34,301,400],[34.1,50,401,500]],
+  'O3':    [[0,50,0,50],[51,100,51,100],[101,168,101,200],[169,208,201,300],[209,748,301,400],[749,1000,401,500]],
+  'NH3':   [[0,200,0,50],[201,400,51,100],[401,800,101,200],[801,1200,201,300],[1201,1800,301,400],[1801,2400,401,500]],
+  'Pb':    [[0,0.5,0,50],[0.51,1,51,100],[1.1,2,101,200],[2.1,3,201,300],[3.1,3.5,301,400],[3.51,5,401,500]],
+};
 
-/* ── City → [lat, lng] lookup (CPCB dataset has no coordinates) ──── */
+function computeAQI(pollutantId, concentration) {
+  const c = parseFloat(concentration);
+  if (isNaN(c) || c < 0) return null;
+  const bps = AQI_BREAKPOINTS[pollutantId];
+  if (!bps) return null;
+  for (const [cLo, cHi, iLo, iHi] of bps) {
+    if (c <= cHi) return Math.round(((iHi - iLo) / (cHi - cLo)) * (c - cLo) + iLo);
+  }
+  return 500;
+}
+
+/* ── City coords fallback ── */
 const CITY_COORDS = {
   'Agra':[27.1767,78.0081],'Ahmedabad':[23.0225,72.5714],'Aizawl':[23.7272,92.7176],
   'Ajmer':[26.4499,74.6399],'Aligarh':[27.8974,78.0880],'Allahabad':[25.4358,81.8463],
@@ -550,43 +503,40 @@ const CITY_COORDS = {
   'Vrindavan':[27.5794,77.6964],'Yamunanagar':[30.1290,77.2674],
 };
 
-/* ── CPCB AQI breakpoints → compute sub-index from concentration ─── */
-const AQI_BREAKPOINTS = {
-  'PM2.5': [[0,30,0,50],[31,60,51,100],[61,90,101,200],[91,120,201,300],[121,250,301,400],[251,500,401,500]],
-  'PM10':  [[0,50,0,50],[51,100,51,100],[101,250,101,200],[251,350,201,300],[351,430,301,400],[431,600,401,500]],
-  'NO2':   [[0,40,0,50],[41,80,51,100],[81,180,101,200],[181,280,201,300],[281,400,301,400],[401,800,401,500]],
-  'SO2':   [[0,40,0,50],[41,80,51,100],[81,380,101,200],[381,800,201,300],[801,1600,301,400],[1601,2620,401,500]],
-  'CO':    [[0,1,0,50],[1.1,2,51,100],[2.1,10,101,200],[10.1,17,201,300],[17.1,34,301,400],[34.1,50,401,500]],
-  'O3':    [[0,50,0,50],[51,100,51,100],[101,168,101,200],[169,208,201,300],[209,748,301,400],[749,1000,401,500]],
-  'NH3':   [[0,200,0,50],[201,400,51,100],[401,800,101,200],[801,1200,201,300],[1201,1800,301,400],[1801,2400,401,500]],
-  'Pb':    [[0,0.5,0,50],[0.51,1,51,100],[1.1,2,101,200],[2.1,3,201,300],[3.1,3.5,301,400],[3.51,5,401,500]],
-};
+/* ── Demo data ── */
+const DEMO_STATIONS = [
+  { city:'Delhi',      station:'ITO',              state:'Delhi',             lat:28.6286, lng:77.2402, aqi:287, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Mumbai',     station:'Bandra',            state:'Maharashtra',       lat:19.0596, lng:72.8295, aqi:82,  pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Bengaluru',  station:'Silk Board',        state:'Karnataka',         lat:12.9170, lng:77.6101, aqi:64,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Chennai',    station:'Manali',            state:'Tamil Nadu',        lat:13.1657, lng:80.2615, aqi:110, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Kolkata',    station:'Rabindra Sarani',   state:'West Bengal',       lat:22.5726, lng:88.3639, aqi:198, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Hyderabad',  station:'Bollaram',          state:'Telangana',         lat:17.4974, lng:78.3612, aqi:95,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Ahmedabad',  station:'Maninagar',         state:'Gujarat',           lat:22.9963, lng:72.6034, aqi:172, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Pune',       station:'Katraj',            state:'Maharashtra',       lat:18.4529, lng:73.8481, aqi:55,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Lucknow',    station:'Lalbagh',           state:'Uttar Pradesh',     lat:26.8467, lng:80.9462, aqi:324, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Jaipur',     station:'Shastri Nagar',     state:'Rajasthan',         lat:26.9124, lng:75.7873, aqi:140, pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Kanpur',     station:'Nehru Nagar',       state:'Uttar Pradesh',     lat:26.4499, lng:80.3319, aqi:356, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Nagpur',     station:'Civil Lines',       state:'Maharashtra',       lat:21.1502, lng:79.0956, aqi:88,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Patna',      station:'Danapur',           state:'Bihar',             lat:25.5941, lng:85.1376, aqi:261, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Indore',     station:'Palasia',           state:'Madhya Pradesh',    lat:22.7196, lng:75.8577, aqi:73,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Bhopal',     station:'TT Nagar',          state:'Madhya Pradesh',    lat:23.2599, lng:77.4126, aqi:118, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Visakhapatnam',station:'Gajuwaka',        state:'Andhra Pradesh',    lat:17.6868, lng:83.2185, aqi:76,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Surat',      station:'Athwa',             state:'Gujarat',           lat:21.1702, lng:72.8311, aqi:131, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Vadodara',   station:'Makarpura',         state:'Gujarat',           lat:22.3072, lng:73.1812, aqi:107, pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Amritsar',   station:'Ratanpur',          state:'Punjab',            lat:31.6340, lng:74.8723, aqi:215, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Guwahati',   station:'Pan Bazar',         state:'Assam',             lat:26.1845, lng:91.7362, aqi:42,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+];
 
-function computeAQI(pollutantId, concentration) {
-  const c = parseFloat(concentration);
-  if (isNaN(c) || c < 0) return null;
-  const bps = AQI_BREAKPOINTS[pollutantId];
-  if (!bps) return null;
-  for (const [cLo, cHi, iLo, iHi] of bps) {
-    if (c <= cHi) return Math.round(((iHi - iLo) / (cHi - cLo)) * (c - cLo) + iLo);
-  }
-  return 500;
-}
-
-/* ── Parse CPCB API response into station objects ────────────────── */
-/* Actual API fields (confirmed): country, state, city, station,
-   last_update, latitude, longitude, pollutant_id, min_value,
-   max_value, avg_value                                              */
+/* ── Parse API records: prefer PM2.5, fallback PM10 ── */
 function parseApiRecords(records) {
-  /* Per-pollutant dataset — aggregate by station, keep highest AQI. */
   const byStation = new Map();
 
   records.forEach(r => {
-    const city    = r.city    || '';
-    const station = r.station || city;
+    const city    = (r.city    || '').trim();
+    const station = (r.station || city).trim();
+    const state   = (r.state   || '').trim();
     if (!city) return;
 
-    // Coordinates from API (present in real data); fall back to lookup
     let lat = parseFloat(r.latitude);
     let lng = parseFloat(r.longitude);
     if (isNaN(lat) || isNaN(lng)) {
@@ -596,33 +546,40 @@ function parseApiRecords(records) {
     }
 
     const pollutantId = (r.pollutant_id || '').trim();
-    // avg_value is the raw concentration; compute AQI sub-index
-    const aqi = computeAQI(pollutantId, r.avg_value);
+    const avgValue    = r.avg_value;
+
+    /* Skip NA or missing */
+    if (avgValue === 'NA' || avgValue === null || avgValue === undefined) return;
+    if (String(avgValue).trim().toUpperCase() === 'NA') return;
+
+    const aqi = computeAQI(pollutantId, avgValue);
     if (!aqi || aqi <= 0) return;
 
-    const key      = `${city}||${station}`;
+    const key = `${city}||${station}`;
     const existing = byStation.get(key);
-    // CPCB composite AQI = highest sub-index across all pollutants
-    if (!existing || aqi > existing.aqi) {
-      byStation.set(key, {
-        city, station, lat, lng, aqi,
-        pollutant: pollutantId || '—',
-        updated:   r.last_update || '',
-      });
+
+    if (!existing) {
+      byStation.set(key, { city, station, state, lat, lng, aqi, pollutant: pollutantId, updated: r.last_update || '' });
+    } else {
+      /* PM2.5 > PM10 > others; within same priority, take higher AQI */
+      const priority = p => p === 'PM2.5' ? 2 : p === 'PM10' ? 1 : 0;
+      const existPri = priority(existing.pollutant);
+      const newPri   = priority(pollutantId);
+      if (newPri > existPri || (newPri === existPri && aqi > existing.aqi)) {
+        byStation.set(key, { city, station, state, lat, lng, aqi, pollutant: pollutantId, updated: r.last_update || '' });
+      }
     }
   });
 
   return Array.from(byStation.values());
 }
 
-/* ── Fetch live CPCB data (all pages) ────────────────────────────── */
+/* ── Fetch live CPCB data (paginated) ── */
 async function fetchCPCBData() {
   const params = new URLSearchParams({ 'api-key': CPCB_API_KEY, format: 'json', limit: API_PAGE_LIMIT, offset: 0 });
   const res = await fetch(`${CPCB_API_URL}?${params}`);
   if (!res.ok) throw new Error(`API error ${res.status}`);
   const json = await res.json();
-  console.log('[vatavaran] API response keys:', Object.keys(json));
-  // data.gov.in may use 'records', 'data', or 'result' depending on the resource
   let records = json.records || json.data || json.result || [];
   const total = parseInt(json.total) || records.length;
   if (total > API_PAGE_LIMIT) {
@@ -630,322 +587,272 @@ async function fetchCPCBData() {
     const fetches = [];
     for (let p = 1; p < pages; p++) {
       const pg = new URLSearchParams({ 'api-key': CPCB_API_KEY, format: 'json', limit: API_PAGE_LIMIT, offset: p * API_PAGE_LIMIT });
-      fetches.push(fetch(`${CPCB_API_URL}?${pg}`).then(r => r.json()).then(j => j.records || []));
+      fetches.push(fetch(`${CPCB_API_URL}?${pg}`).then(r => r.json()).then(j => j.records || j.data || []));
     }
     (await Promise.all(fetches)).forEach(r => records.push(...r));
   }
   return parseApiRecords(records);
 }
 
-/* ── Haversine distance (km) ─────────────────────────────────────── */
-function distKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+/* ── Stats bar ── */
+function updateStats(stations) {
+  if (stations.length === 0) return;
+  const sorted = [...stations].sort((a, b) => b.aqi - a.aqi);
+  const worst  = sorted[0];
+  const best   = sorted[sorted.length - 1];
+
+  document.getElementById('stat-count').innerHTML =
+    `<span class="pill-num">${stations.length}</span>&nbsp;stations reporting`;
+
+  document.getElementById('stat-worst').innerHTML =
+    `Worst:&nbsp;<span class="pill-num" style="color:${aqiColor(worst.aqi)}">${worst.city} · ${worst.aqi}</span>`;
+
+  document.getElementById('stat-best').innerHTML =
+    `Best:&nbsp;<span class="pill-num" style="color:${aqiColor(best.aqi)}">${best.city} · ${best.aqi}</span>`;
 }
 
-/* ── Build GeoJSON FeatureCollection ────────────────────────────── */
-function buildGeoJSON(stations, nearestIdx) {
-  return {
-    type: 'FeatureCollection',
-    features: stations.map((s, i) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
-      properties: {
-        city:      s.city,
-        station:   s.station,
-        aqi:       s.aqi,
-        pollutant: s.pollutant,
-        updated:   s.updated,
-        color:     aqiColor(s.aqi),
-        nearest:   i === nearestIdx,
-        label:     String(s.aqi > 999 ? '999+' : s.aqi),
-      },
-    })),
-  };
-}
-
-/* ── Build popup HTML ────────────────────────────────────────────── */
-function buildPopupHTML(p) {
-  const color   = aqiColor(p.aqi);
-  const verdict = aqiVerdict(p.aqi);
-  const name    = p.station && p.station !== p.city ? `${p.city} · ${p.station}` : p.city;
-  return `
+/* ── Popup HTML ── */
+function buildPopupHTML(s) {
+  const color   = aqiColor(s.aqi);
+  const verdict = aqiVerdict(s.aqi);
+  const name    = (s.station && s.station !== s.city) ? `${s.city} · ${s.station}` : s.city;
+  return `<div class="popup-inner">
     <div class="popup-city">${name}</div>
     <div class="popup-aqi-row">
-      <span class="popup-aqi-val" style="color:${color}">${p.aqi}</span>
+      <span class="popup-aqi-val" style="color:${color}">${s.aqi}</span>
       <span class="popup-aqi-label">AQI</span>
     </div>
-    <div class="popup-verdict" style="color:${color}">${verdict}</div>
+    <div class="popup-verdict" style="color:${color}">Air is ${verdict}</div>
     <div class="popup-meta">
-      <span><strong>Pollutant&nbsp;</strong>${p.pollutant}</span>
-      ${p.updated ? `<span><strong>Updated&nbsp;</strong>${p.updated}</span>` : ''}
-    </div>`;
+      <span><strong>Pollutant&nbsp;</strong>${s.pollutant}</span>
+      ${s.updated ? `<span><strong>Updated&nbsp;</strong>${s.updated}</span>` : ''}
+    </div>
+  </div>`;
 }
 
-/* ── Update nearest-station card ─────────────────────────────────── */
-function updateCard(s) {
-  const color = aqiColor(s.aqi);
-  document.getElementById('card-city').textContent      = s.station && s.station !== s.city ? `${s.city} · ${s.station}` : s.city;
-  document.getElementById('card-aqi').textContent       = s.aqi;
-  document.getElementById('card-aqi').style.color       = color;
-  document.getElementById('card-verdict').textContent   = aqiVerdict(s.aqi);
-  document.getElementById('card-verdict').style.color   = color;
-  document.getElementById('card-pollutant').textContent = s.pollutant ? `Dominant pollutant: ${s.pollutant}` : '';
-  document.getElementById('card-updated').textContent   = s.updated   ? `Updated ${s.updated}` : '';
-  document.getElementById('nearest-card').classList.remove('hidden');
-}
-
-/* ── Utility: show error/info banner ────────────────────────────── */
+/* ── Error banner ── */
 function showBanner(msg, type = 'error') {
-  const banner = document.getElementById('error-banner');
-  banner.textContent = msg;
-  banner.style.display = 'block';
+  const el = document.getElementById('error-banner');
+  el.textContent = msg;
+  el.style.display = 'block';
   if (type === 'info') {
-    banner.style.background  = '#1A2E1F';
-    banner.style.borderColor = '#2D4A32';
-    banner.style.color       = '#7DA882';
+    el.style.background  = '#1A2E1F';
+    el.style.borderColor = '#2D4A32';
+    el.style.color       = '#7DA882';
+  } else {
+    el.style.background  = '#2D1A1A';
+    el.style.borderColor = '#5C2020';
+    el.style.color       = '#FF8A80';
   }
-  setTimeout(() => { banner.style.display = 'none'; }, 8000);
+  setTimeout(() => { el.style.display = 'none'; }, 8000);
 }
 
-/* ── India boundary: fetch from datameet, fall back to inline ─────── */
-const WORLD_RING = [[-180,-90],[-180,90],[180,90],[180,-90],[-180,-90]];
-
-/* Rough inline fallback — only used if the datameet fetch fails */
-const FALLBACK_INDIA_RING = [
-  [68.1,37.1],[68.1,35.5],[69.3,34.6],[71.0,33.4],[73.9,34.5],
-  [74.6,34.7],[75.4,34.6],[76.8,34.6],[79.1,32.5],[80.3,31.1],
-  [81.8,30.0],[83.3,29.0],[84.7,28.3],[86.5,28.1],[88.0,27.5],
-  [88.9,27.3],[92.0,27.0],[93.4,26.7],[95.0,27.3],[97.3,28.3],
-  [97.0,25.8],[96.2,23.9],[94.5,23.6],[93.5,22.2],[92.4,21.5],
-  [91.5,22.5],[89.8,21.8],[88.5,21.6],[87.4,21.2],[86.8,20.2],
-  [85.8,19.8],[84.0,19.3],[82.8,18.0],[80.9,16.0],[80.3,15.6],
-  [80.0,13.5],[79.8,10.3],[77.5,8.1],[76.6,8.5],[76.2,10.4],
-  [75.7,11.9],[74.9,13.6],[74.3,14.8],[73.8,18.0],[73.0,18.9],
-  [72.9,19.2],[72.5,21.4],[68.7,22.4],[68.2,23.6],[68.4,29.0],
-  [68.1,37.1]
-];
-
-async function buildIndiaMask() {
-  let indiaRing = FALLBACK_INDIA_RING;
-  try {
-    const resp = await fetch(
-      'https://raw.githubusercontent.com/datameet/maps/master/Country/india-land-simplified.geojson'
-    );
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const geojson = await resp.json();
-    /* Handle Feature, FeatureCollection, Polygon, MultiPolygon */
-    const geo = geojson.type === 'FeatureCollection'
-      ? geojson.features[0].geometry
-      : geojson.type === 'Feature' ? geojson.geometry : geojson;
-    indiaRing = geo.type === 'MultiPolygon'
-      ? geo.coordinates[0][0]  // largest polygon's outer ring
-      : geo.coordinates[0];    // Polygon outer ring
-  } catch (e) {
-    console.warn('[vatavaran] India boundary fetch failed, using fallback:', e.message);
-  }
-  return {
-    maskGeoJSON: {
-      type: 'Feature',
-      geometry: { type: 'Polygon', coordinates: [WORLD_RING, indiaRing] },
-    },
-    borderGeoJSON: {
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: indiaRing },
-    },
-  };
-}
-
-/* AQI colour step expression for MapLibre paint (avoids string property lookup) */
-const AQI_COLOR_STEP = [
-  'step', ['get', 'aqi'],
-  '#4CAF50', 51,
-  '#8BC34A', 101,
-  '#FFC107', 201,
-  '#FF5722', 301,
-  '#F44336', 401,
-  '#B71C1C'
-];
-
-/* ── Main init ───────────────────────────────────────────────────── */
+/* ── Main ── */
 (async function init() {
 
-  const map = new maplibregl.Map({
-    container: 'map',
-    style: {
-      version: 8,
-      sources: {
-        osm: {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-          maxzoom: 19,
-        },
-      },
-      layers: [{
-        id: 'osm-tiles',
-        type: 'raster',
-        source: 'osm',
-        paint: {
-          'raster-brightness-min': 0,
-          'raster-brightness-max': 0.22,
-          'raster-saturation': -0.7,
-          'raster-contrast': 0.15,
-        },
-      }],
-    },
-    center: [82.9, 22.5],
-    zoom: 4.5,
+  /* Init Leaflet */
+  const map = L.map('map', {
+    center: [22.5, 82.9],
+    zoom: 5,
     minZoom: 4,
     maxZoom: 14,
+    maxBounds: [[4, 64], [40, 100]],
+    maxBoundsViscosity: 1.0,
+    zoomControl: true,
   });
 
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-  map.addControl(new maplibregl.GeolocateControl({
-    positionOptions: { enableHighAccuracy: true },
-    trackUserLocation: false,
-  }), 'top-right');
+  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 20,
+  }).addTo(map);
 
-  /* Fetch data in parallel with map load */
+  map.fitBounds([[6.5, 68.1], [37.1, 97.4]], { padding: [24, 24] });
+
+  /* Fetch data + state GeoJSON in parallel */
   const usingDemo = CPCB_API_KEY === 'YOUR_API_KEY_HERE';
-  let stations = [];
 
-  const [fetchedStations, india] = await Promise.all([
+  const [fetchedStations, stateGeojson] = await Promise.all([
     (async () => {
       try {
         if (usingDemo) {
-          showBanner('Demo mode: showing sample data. Add your data.gov.in API key for live readings.', 'info');
+          showBanner('Demo mode — add your data.gov.in API key for live readings.', 'info');
           return DEMO_STATIONS;
         }
         const s = await fetchCPCBData();
         if (s.length === 0) throw new Error('No records returned by API');
         return s;
       } catch (err) {
-        console.error('CPCB fetch failed:', err);
+        console.error('[vatavaran] CPCB fetch failed:', err);
         showBanner(`Could not load live data (${err.message}). Showing demo markers.`);
         return DEMO_STATIONS;
       }
     })(),
-    buildIndiaMask(),
-    new Promise(resolve => map.once('load', resolve)),
+    fetch('https://raw.githubusercontent.com/geohacker/india/master/state/india_state.geojson')
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null),
   ]);
 
-  stations = fetchedStations;
+  let stations = fetchedStations;
 
-  /* Fit to India and lock panning after style loads */
-  map.fitBounds([[68.1, 6.5], [97.4, 37.1]], { padding: 24, animate: false });
-  map.setMaxBounds([[64, 4], [100, 40]]);
+  /* ── State overlay ── */
+  const stateBoundsMap = {}; /* normalized state name → L.LatLngBounds */
 
-  /* ── Dark mask over non-India area (accurate datameet boundary) ─── */
-  map.addSource('india-mask', { type: 'geojson', data: india.maskGeoJSON });
-  map.addLayer({
-    id: 'india-mask-fill',
-    type: 'fill',
-    source: 'india-mask',
-    paint: {
-      'fill-color': '#0A0F0D',
-      'fill-opacity': 0.82,
-    },
-  });
-  /* Subtle green border around India */
-  map.addSource('india-border', { type: 'geojson', data: india.borderGeoJSON });
-  map.addLayer({
-    id: 'india-border-line',
-    type: 'line',
-    source: 'india-border',
-    paint: {
-      'line-color': '#2D4A32',
-      'line-width': 1.5,
-      'line-opacity': 0.9,
-    },
-  });
+  function normStateName(s) { return (s || '').toLowerCase().trim(); }
 
-  /* ── AQI station layers ─────────────────────────────────────────── */
-  map.addSource('stations', {
-    type: 'geojson',
-    data: buildGeoJSON(stations, -1),
-  });
-
-  /* All stations — step expression on aqi integer (most reliable approach) */
-  map.addLayer({
-    id: 'aqi-circles',
-    type: 'circle',
-    source: 'stations',
-    filter: ['!=', ['get', 'nearest'], true],
-    paint: {
-      'circle-radius':       ['interpolate', ['linear'], ['zoom'], 4, 9, 10, 16],
-      'circle-color':        AQI_COLOR_STEP,
-      'circle-stroke-color': 'rgba(255,255,255,0.3)',
-      'circle-stroke-width': 1.5,
-      'circle-opacity':      0.92,
-    },
-  });
-
-  /* Nearest station — larger with white ring */
-  map.addLayer({
-    id: 'aqi-nearest',
-    type: 'circle',
-    source: 'stations',
-    filter: ['==', ['get', 'nearest'], true],
-    paint: {
-      'circle-radius':       ['interpolate', ['linear'], ['zoom'], 4, 13, 10, 22],
-      'circle-color':        AQI_COLOR_STEP,
-      'circle-stroke-color': '#ffffff',
-      'circle-stroke-width': 3,
-      'circle-opacity':      1,
-    },
-  });
-
-  /* Click → popup */
-  const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '260px', offset: 4 });
-
-  ['aqi-circles', 'aqi-nearest'].forEach(id => {
-    map.on('click', id, e => {
-      popup
-        .setLngLat(e.features[0].geometry.coordinates.slice())
-        .setHTML(buildPopupHTML(e.features[0].properties))
-        .addTo(map);
-    });
-    map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
-  });
-
-  /* ── Nearest station detection ─────────────────────────────────── */
-  let nearestIdx = -1;
-
-  function findNearest(userLat, userLng) {
-    if (stations.length === 0) return;
-    let bestIdx = 0, bestDist = Infinity;
-    stations.forEach((s, i) => {
-      const d = distKm(userLat, userLng, s.lat, s.lng);
-      if (d < bestDist) { bestDist = d; bestIdx = i; }
-    });
-    nearestIdx = bestIdx;
-    map.getSource('stations').setData(buildGeoJSON(stations, nearestIdx));
-    updateCard(stations[nearestIdx]);
+  function getStateNameFromFeature(f) {
+    return f.properties.NAME_1 || f.properties.name || f.properties.State || f.properties.ST_NM || '';
   }
 
-  if ('geolocation' in navigator) {
-    navigator.geolocation.getCurrentPosition(
-      pos  => findNearest(pos.coords.latitude, pos.coords.longitude),
-      _err => findNearest(28.6, 77.2),
-      { timeout: 5000 }
-    );
-  } else {
-    findNearest(28.6, 77.2);
+  if (stateGeojson) {
+    /* Avg AQI per state (keyed by normalized API state name) */
+    const stateSum = {}, stateCount = {};
+    stations.forEach(s => {
+      if (!s.state) return;
+      const k = normStateName(s.state);
+      stateSum[k]   = (stateSum[k]   || 0) + s.aqi;
+      stateCount[k] = (stateCount[k] || 0) + 1;
+    });
+
+    L.geoJSON(stateGeojson, {
+      style: feature => {
+        const name = getStateNameFromFeature(feature);
+        const avg  = stateSum[normStateName(name)]
+          ? Math.round(stateSum[normStateName(name)] / stateCount[normStateName(name)])
+          : null;
+        return {
+          fillColor:   avg ? aqiColor(avg) : 'transparent',
+          fillOpacity: avg ? 0.25 : 0,
+          color:       '#2D4A32',
+          weight:      0.8,
+          opacity:     0.5,
+        };
+      },
+      onEachFeature: (feature, layer) => {
+        const geoName = getStateNameFromFeature(feature);
+        const normKey = normStateName(geoName);
+
+        /* Store bounds for filter panel (keyed by normalized GeoJSON name) */
+        stateBoundsMap[normKey] = layer.getBounds();
+
+        const avg = stateSum[normKey]
+          ? Math.round(stateSum[normKey] / stateCount[normKey])
+          : null;
+
+        if (avg) {
+          layer.bindTooltip(
+            `${geoName} &middot; Avg AQI ${avg} &middot; ${aqiVerdict(avg)}`,
+            { sticky: true, className: 'state-tooltip' }
+          );
+          layer.on('mouseover', () => layer.setStyle({ fillOpacity: 0.45 }));
+          layer.on('mouseout',  () => layer.setStyle({ fillOpacity: 0.25 }));
+        }
+      },
+    }).addTo(map);
   }
 
-  /* Hide loading overlay */
+  /* ── Station markers ── */
+  let markerLayer = L.layerGroup().addTo(map);
+
+  function renderMarkers(list) {
+    markerLayer.clearLayers();
+    list.forEach(s => {
+      const circle = L.circleMarker([s.lat, s.lng], {
+        radius:      9,
+        fillColor:   aqiColor(s.aqi),
+        color:       'rgba(255,255,255,0.3)',
+        weight:      1.5,
+        fillOpacity: 0.92,
+      });
+      circle.bindPopup(buildPopupHTML(s), { maxWidth: 260 });
+      markerLayer.addLayer(circle);
+    });
+  }
+
+  renderMarkers(stations);
+  updateStats(stations);
+
+  /* ── Filter panel ── */
+  const panel       = document.getElementById('filter-panel');
+  const strip       = document.getElementById('filter-strip');
+  const stateSelect = document.getElementById('filter-state');
+  const citySelect  = document.getElementById('filter-city');
+  const resetEl     = document.getElementById('filter-reset');
+
+  /* Populate state dropdown */
+  const stateSet = new Set(stations.map(s => s.state).filter(Boolean));
+  [...stateSet].sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    stateSelect.appendChild(opt);
+  });
+
+  /* Cities grouped by state */
+  const citiesByState = {};
+  stations.forEach(s => {
+    if (!s.state || !s.city) return;
+    if (!citiesByState[s.state]) citiesByState[s.state] = new Set();
+    citiesByState[s.state].add(s.city);
+  });
+
+  function rebuildCitySelect(stateName) {
+    citySelect.innerHTML = '<option value="">All Cities</option>';
+    if (!stateName) return;
+    const cities = citiesByState[stateName];
+    if (!cities) return;
+    [...cities].sort().forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      citySelect.appendChild(opt);
+    });
+  }
+
+  strip.addEventListener('click', () => panel.classList.toggle('expanded'));
+
+  stateSelect.addEventListener('change', () => {
+    const stateName = stateSelect.value;
+    rebuildCitySelect(stateName);
+    citySelect.value = '';
+
+    const filtered = stateName ? stations.filter(s => s.state === stateName) : stations;
+    renderMarkers(filtered);
+
+    if (stateName) {
+      const bounds = stateBoundsMap[normStateName(stateName)];
+      if (bounds && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40] });
+      } else if (filtered.length > 0) {
+        map.fitBounds(filtered.map(s => [s.lat, s.lng]), { padding: [60, 60] });
+      }
+    } else {
+      map.fitBounds([[6.5, 68.1], [37.1, 97.4]], { padding: [24, 24] });
+    }
+  });
+
+  citySelect.addEventListener('change', () => {
+    const cityName  = citySelect.value;
+    const stateName = stateSelect.value;
+    let filtered = stateName ? stations.filter(s => s.state === stateName) : stations;
+
+    if (cityName) {
+      filtered = filtered.filter(s => s.city === cityName);
+      if (filtered.length > 0) map.setView([filtered[0].lat, filtered[0].lng], 12);
+    }
+    renderMarkers(filtered);
+  });
+
+  resetEl.addEventListener('click', () => {
+    stateSelect.value = '';
+    rebuildCitySelect('');
+    renderMarkers(stations);
+    map.fitBounds([[6.5, 68.1], [37.1, 97.4]], { padding: [24, 24] });
+  });
+
+  /* Hide loading */
   const overlay = document.getElementById('loading-overlay');
   overlay.classList.add('fade-out');
-  setTimeout(() => overlay.style.display = 'none', 500);
+  setTimeout(() => { overlay.style.display = 'none'; }, 500);
 
 })();
 </script>
-
 </body>
 </html>
