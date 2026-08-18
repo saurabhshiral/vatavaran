@@ -1,0 +1,439 @@
+---
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+const svgFile = path.join(process.cwd(), 'public', 'india.svg');
+const svgText = readFileSync(svgFile, 'utf-8');
+const statePaths: Record<string, string> = {};
+const re = /id="([a-z]{2,3})"[^>]*\bd="([^"]+)"/g;
+let m: RegExpExecArray | null;
+while ((m = re.exec(svgText)) !== null) statePaths[m[1]] = m[2];
+---
+
+<div id="filter-panel">
+  <div id="filter-strip">
+    <span>›</span>
+    <span>FILTER</span>
+  </div>
+  <div id="filter-content">
+    <h3>Filter</h3>
+    <select id="filter-state"><option value="">All States</option></select>
+    <select id="filter-city"><option value="">All Cities</option></select>
+    <button id="filter-reset">Reset</button>
+  </div>
+</div>
+
+<div id="map-wrap">
+  <svg id="india-svg" viewBox="0 0 612 696" xmlns="http://www.w3.org/2000/svg">
+    <g id="state-layer"></g>
+    <g id="marker-layer"></g>
+  </svg>
+</div>
+
+<div id="zoom-btns">
+  <button class="zoom-btn" id="zoom-in">+</button>
+  <button class="zoom-btn" id="zoom-out">−</button>
+</div>
+
+<div id="popup">
+  <div id="popup-inner"><button id="popup-close">×</button></div>
+</div>
+<div id="state-tip"></div>
+
+<div id="legend">
+  <h4>AQI INDEX</h4>
+  <div class="legend-row"><div class="legend-dot" style="background:#55A84F"></div>0–50 Good</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#A3C853"></div>51–100 Satisfactory</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#FFF833"></div>101–200 Moderate</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#F29C33"></div>201–300 Poor</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#E93F33"></div>301–400 Very Poor</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#AF2D24"></div>401+ Severe</div>
+  <p class="legend-soi">Boundaries shown are for representational purposes only and do not reflect official Survey of India demarcations.</p>
+</div>
+
+<script define:vars={{ statePaths }}>
+// ── Projection (equirectangular calibrated to india.svg — LAT1=38 covers full J&K claim) ──
+const SVG_W = 612, SVG_H = 696;
+const LNG0 = 68.1, LNG1 = 97.4, LAT0 = 6.5, LAT1 = 38.0;
+function project(lat, lng) {
+  return [(lng - LNG0) / (LNG1 - LNG0) * SVG_W, (LAT1 - lat) / (LAT1 - LAT0) * SVG_H];
+}
+
+// ── AQI helpers ──
+function aqiColor(aqi) {
+  if (aqi <= 50) return '#55A84F'; if (aqi <= 100) return '#A3C853';
+  if (aqi <= 200) return '#FFF833'; if (aqi <= 300) return '#F29C33';
+  if (aqi <= 400) return '#E93F33'; return '#AF2D24';
+}
+function aqiVerdict(aqi) {
+  if (aqi <= 50) return 'Good'; if (aqi <= 100) return 'Satisfactory';
+  if (aqi <= 200) return 'Moderate'; if (aqi <= 300) return 'Poor';
+  if (aqi <= 400) return 'Very Poor'; return 'Severe';
+}
+
+// ── State IDs → normalized CPCB names ──
+const STATE_IDS = {
+  an:'andaman and nicobar islands', ap:'andhra pradesh', ar:'arunachal pradesh',
+  as:'assam', br:'bihar', ch:'chandigarh', ct:'chhattisgarh',
+  dn:'dadra and nagar haveli and daman and diu',
+  dl:'delhi', ga:'goa', gj:'gujarat', hr:'haryana', hp:'himachal pradesh',
+  jk:'jammu and kashmir', jh:'jharkhand', ka:'karnataka', kl:'kerala',
+  ld:'lakshadweep', mp:'madhya pradesh', mh:'maharashtra', mn:'manipur',
+  ml:'meghalaya', mz:'mizoram', nl:'nagaland', or:'odisha', py:'puducherry',
+  pb:'punjab', rj:'rajasthan', sk:'sikkim', tn:'tamil nadu', tg:'telangana',
+  tr:'tripura', up:'uttar pradesh', ut:'uttarakhand', wb:'west bengal',
+};
+function normState(s) { return (s||'').toLowerCase().replace(/&/g,'and').replace(/\s+/g,' ').trim(); }
+
+// ── DOM refs ──
+const svgEl     = document.getElementById('india-svg');
+const mapWrap   = document.getElementById('map-wrap');
+const stateLayer  = document.getElementById('state-layer');
+const markerLayer = document.getElementById('marker-layer');
+const popup       = document.getElementById('popup');
+const popupInner  = document.getElementById('popup-inner');
+const stateTip    = document.getElementById('state-tip');
+const panel       = document.getElementById('filter-panel');
+const strip       = document.getElementById('filter-strip');
+const stateSelect = document.getElementById('filter-state');
+const citySelect  = document.getElementById('filter-city');
+const resetEl     = document.getElementById('filter-reset');
+const loadingEl   = document.getElementById('loading-overlay');
+const bannerEl    = document.getElementById('banner');
+const statCount   = document.getElementById('stat-count');
+const statOfTotal = document.getElementById('stat-of-total');
+const statWorst   = document.getElementById('stat-worst');
+const statBest    = document.getElementById('stat-best');
+
+// ── ViewBox pan/zoom ──
+let vb = { x: 0, y: 0, w: SVG_W, h: SVG_H };
+function applyVB() {
+  svgEl.setAttribute('viewBox', `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
+  refreshZoom();
+}
+function clampVB() {
+  vb.w = Math.max(80, Math.min(SVG_W, vb.w));
+  vb.h = vb.w * SVG_H / SVG_W;
+  vb.x = Math.max(0, Math.min(SVG_W - vb.w, vb.x));
+  vb.y = Math.max(0, Math.min(SVG_H - vb.h, vb.y));
+}
+function zoomAround(factor, mx, my) {
+  const nw = Math.max(80, Math.min(SVG_W, vb.w * factor));
+  const nh = nw * SVG_H / SVG_W;
+  vb.x += mx * (vb.w - nw);
+  vb.y += my * (vb.h - nh);
+  vb.w = nw; vb.h = nh;
+  clampVB(); applyVB();
+}
+
+// ── Clustering ──
+function buildClusters(stations) {
+  const CLUSTER_PX = 28;
+  const displayW = mapWrap.getBoundingClientRect().width || 800;
+  const pxPerUnit = displayW / vb.w;
+  const minDist2 = (CLUSTER_PX / pxPerUnit) ** 2;
+  const sorted = [...stations].sort((a, b) => b.aqi - a.aqi);
+  const used = new Uint8Array(sorted.length);
+  const clusters = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (used[i]) continue;
+    const s = sorted[i];
+    const [cx, cy] = project(s.lat, s.lng);
+    const members = [s]; used[i] = 1;
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (used[j]) continue;
+      const [x2, y2] = project(sorted[j].lat, sorted[j].lng);
+      const dx = cx - x2, dy = cy - y2;
+      if (dx*dx + dy*dy < minDist2) { members.push(sorted[j]); used[j] = 1; }
+    }
+    clusters.push({ cx, cy, aqi: s.aqi, count: members.length,
+      station: members.length === 1 ? s : null, members });
+  }
+  return clusters;
+}
+
+// ── Refresh zoom (dot sizes + detail mode + re-cluster) ──
+let _currentStations = [];
+function refreshZoom() {
+  const displayW = mapWrap.getBoundingClientRect().width || 800;
+  const pxPerUnit = displayW / vb.w;
+  const r  = Math.max(2.5, Math.min(8, 7 / pxPerUnit));
+  const fs = Math.max(5, Math.min(18, 12 / pxPerUnit));
+  svgEl.style.setProperty('--dot-r', r.toFixed(2));
+  svgEl.style.setProperty('--label-fs', `${fs.toFixed(2)}px`);
+  svgEl.classList.toggle('detail-mode', vb.w < SVG_W * 0.55);
+  if (_currentStations.length) renderClusters(buildClusters(_currentStations));
+}
+
+// ── Render state fills ──
+function renderStatePaths(stateAqi) {
+  stateLayer.innerHTML = '';
+  Object.entries(STATE_IDS).forEach(([id, normName]) => {
+    const d = statePaths[id];
+    if (!d) return;
+    const keys = id === 'jk' ? [normName, 'ladakh'] : [normName];
+    const sum = keys.reduce((s, k) => s + (stateAqi.sum[k] || 0), 0);
+    const cnt = keys.reduce((s, k) => s + (stateAqi.cnt[k] || 0), 0);
+    const avg = cnt ? Math.round(sum / cnt) : null;
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    el.setAttribute('d', d);
+    el.setAttribute('class', 'state-path');
+    el.setAttribute('fill', avg ? aqiColor(avg) : 'transparent');
+    el.setAttribute('fill-opacity', avg ? '0.22' : '0');
+    if (avg) {
+      const dn = normName.replace(/\b\w/g, c => c.toUpperCase());
+      el.addEventListener('mouseenter', e => { el.setAttribute('fill-opacity','0.42'); showTip(e,`${dn} · Avg AQI <strong>${avg}</strong> · ${aqiVerdict(avg)}`); });
+      el.addEventListener('mousemove', moveTip);
+      el.addEventListener('mouseleave', () => { el.setAttribute('fill-opacity','0.22'); hideTip(); });
+    }
+    stateLayer.appendChild(el);
+  });
+}
+
+// ── Render clusters ──
+function renderClusters(clusters) {
+  markerLayer.innerHTML = '';
+  const displayW = mapWrap.getBoundingClientRect().width || 800;
+  const pxPerUnit = displayW / vb.w;
+  const inDetail = svgEl.classList.contains('detail-mode');
+
+  // For label collision in detail mode
+  const accepted = [];
+  const MIN_LABEL_PX2 = 55 * 55;
+
+  clusters.forEach(cl => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${cl.cx.toFixed(1)},${cl.cy.toFixed(1)})`);
+
+    if (cl.count === 1) {
+      // Single station dot
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', '0'); c.setAttribute('cy', '0');
+      c.setAttribute('fill', aqiColor(cl.aqi));
+      c.setAttribute('class', 'station-dot');
+      c.addEventListener('click', e => { e.stopPropagation(); if (dragMoved) return; showPopup(cl.station); });
+      g.appendChild(c);
+
+      // Label (detail mode, collision checked)
+      if (inDetail) {
+        const tooClose = accepted.some(p => {
+          const dx = (cl.cx - p.cx) * pxPerUnit, dy = (cl.cy - p.cy) * pxPerUnit;
+          return dx*dx + dy*dy < MIN_LABEL_PX2;
+        });
+        if (!tooClose) {
+          accepted.push(cl);
+          const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          t.setAttribute('x', '9'); t.setAttribute('y', '4');
+          t.setAttribute('class', 'station-label');
+          t.textContent = `${cl.station.city} · ${cl.aqi}`;
+          g.appendChild(t);
+        }
+      }
+    } else {
+      // Cluster bubble
+      const rSvg = Math.max(8, (7 + Math.log(cl.count) * 4) / pxPerUnit);
+      const outer = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      outer.setAttribute('cx', '0'); outer.setAttribute('cy', '0');
+      outer.setAttribute('r', (rSvg * 1.5).toFixed(2));
+      outer.setAttribute('fill', aqiColor(cl.aqi));
+      outer.setAttribute('class', 'cluster-outer');
+      const inner = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      inner.setAttribute('cx', '0'); inner.setAttribute('cy', '0');
+      inner.setAttribute('r', rSvg.toFixed(2));
+      inner.setAttribute('fill', aqiColor(cl.aqi));
+      inner.setAttribute('class', 'cluster-inner');
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', '0'); label.setAttribute('y', '0');
+      label.setAttribute('class', 'cluster-label');
+      label.style.fontSize = `${Math.max(6, 10 / pxPerUnit).toFixed(1)}px`;
+      label.textContent = cl.count;
+
+      // Click cluster: zoom into it
+      [outer, inner].forEach(el => el.addEventListener('click', e => {
+        e.stopPropagation();
+        if (dragMoved) return;
+        const pad = rSvg * 3;
+        vb.x = cl.cx - pad; vb.y = cl.cy - pad; vb.w = pad * 2; vb.h = vb.w * SVG_H / SVG_W;
+        clampVB(); applyVB();
+      }));
+      g.appendChild(outer); g.appendChild(inner); g.appendChild(label);
+    }
+    markerLayer.appendChild(g);
+  });
+}
+
+// ── Popup ──
+function svgToScreen(sx, sy) {
+  const pt = svgEl.createSVGPoint(); pt.x = sx; pt.y = sy;
+  const s = pt.matrixTransform(svgEl.getScreenCTM());
+  return [s.x, s.y];
+}
+function showPopup(s) {
+  const [sx, sy] = project(s.lat, s.lng);
+  const [px, py] = svgToScreen(sx, sy);
+  popup.style.left = `${px}px`; popup.style.top = `${py}px`; popup.style.display = 'block';
+  popupInner.innerHTML = `<button id="popup-close">×</button>
+    <strong>${s.station}</strong><br>
+    <span style="color:var(--text-muted)">${s.city}, ${s.state}</span><br><br>
+    AQI <strong style="font-size:20px;color:${aqiColor(s.aqi)}">${s.aqi}</strong>
+    <span style="color:var(--text-muted)"> · ${aqiVerdict(s.aqi)}</span><br>
+    <span style="font-size:11px;color:var(--text-muted)">${s.pollutant} · ${s.updated}</span>`;
+  document.getElementById('popup-close').onclick = () => popup.style.display = 'none';
+}
+mapWrap.addEventListener('click', () => { if (!dragMoved) popup.style.display = 'none'; });
+
+// ── State tooltip ──
+function showTip(e, html) { stateTip.innerHTML = html; stateTip.style.display = 'block'; moveTip(e); }
+function moveTip(e) {
+  stateTip.style.left = `${Math.min(e.clientX+12, innerWidth-stateTip.offsetWidth-8)}px`;
+  stateTip.style.top  = `${Math.min(e.clientY+12, innerHeight-stateTip.offsetHeight-8)}px`;
+}
+function hideTip() { stateTip.style.display = 'none'; }
+
+// ── Pan (mouse) ──
+let dragStart = null, dragMoved = false;
+mapWrap.addEventListener('mousedown', e => { dragStart = { x: e.clientX, y: e.clientY, vbx: vb.x, vby: vb.y }; dragMoved = false; });
+window.addEventListener('mousemove', e => {
+  if (!dragStart) return;
+  const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+  if (Math.abs(dx)+Math.abs(dy) > 3) dragMoved = true;
+  const s = vb.w / (mapWrap.getBoundingClientRect().width || 800);
+  vb.x = dragStart.vbx - dx * s; vb.y = dragStart.vby - dy * s;
+  clampVB(); applyVB();
+});
+window.addEventListener('mouseup', () => { dragStart = null; });
+
+// ── Zoom (wheel) ──
+mapWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = mapWrap.getBoundingClientRect();
+  zoomAround(e.deltaY > 0 ? 1.15 : 0.87, (e.clientX-rect.left)/rect.width, (e.clientY-rect.top)/rect.height);
+}, { passive: false });
+
+// ── Touch ──
+let touches = null;
+mapWrap.addEventListener('touchstart', e => { touches = e.touches; dragMoved = false; }, { passive: true });
+mapWrap.addEventListener('touchmove', e => {
+  if (!touches) return; e.preventDefault();
+  if (e.touches.length === 1 && touches.length === 1) {
+    const dx = e.touches[0].clientX - touches[0].clientX;
+    const dy = e.touches[0].clientY - touches[0].clientY;
+    if (Math.abs(dx)+Math.abs(dy) > 3) dragMoved = true;
+    const s = vb.w / (mapWrap.getBoundingClientRect().width || 800);
+    vb.x -= dx * s; vb.y -= dy * s; clampVB(); applyVB();
+  } else if (e.touches.length === 2 && touches.length === 2) {
+    const d0 = Math.hypot(touches[0].clientX-touches[1].clientX, touches[0].clientY-touches[1].clientY);
+    const d1 = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    zoomAround(d0/d1, 0.5, 0.5);
+  }
+  touches = e.touches;
+}, { passive: false });
+mapWrap.addEventListener('touchend', e => { if (!e.touches.length) touches = null; });
+mapWrap.addEventListener('touchcancel', () => { touches = null; });
+
+// ── Zoom buttons ──
+document.getElementById('zoom-in').onclick  = () => zoomAround(0.7, 0.5, 0.5);
+document.getElementById('zoom-out').onclick = () => zoomAround(1.5, 0.5, 0.5);
+
+// ── Fly to station list ──
+function flyToList(list) {
+  if (!list.length) { vb = {x:0,y:0,w:SVG_W,h:SVG_H}; applyVB(); return; }
+  const pts = list.map(s => project(s.lat, s.lng));
+  const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+  const pad = list.length===1 ? 80 : 40;
+  vb.x = Math.max(0,Math.min(...xs)-pad); vb.y = Math.max(0,Math.min(...ys)-pad);
+  vb.w = Math.max(...xs)-Math.min(...xs)+pad*2; vb.h = vb.w*SVG_H/SVG_W;
+  clampVB(); applyVB();
+}
+
+// ── Stats bar ──
+function updateStats(stations, total = null) {
+  if (!stations.length) {
+    statCount.textContent='—'; statOfTotal.textContent=''; statWorst.textContent='—'; statBest.textContent='—'; return;
+  }
+  statCount.textContent = stations.length;
+  statOfTotal.textContent = total ? ` of ${total}` : '';
+  const sorted = [...stations].sort((a,b)=>b.aqi-a.aqi);
+  const w = sorted[0], b = sorted[sorted.length-1];
+  statWorst.textContent = `${w.city} · ${w.aqi}`;
+  statBest.textContent  = `${b.city} · ${b.aqi}`;
+}
+
+// ── Banner ──
+function showBanner(msg) {
+  bannerEl.textContent = msg; bannerEl.style.display = 'block';
+  setTimeout(() => bannerEl.style.display='none', 6000);
+}
+
+// ── Filter state (module-level so listeners register once) ──
+let _allFilteredStations = [];
+let _citiesByState = {};
+
+function rebuildCities(st) {
+  citySelect.innerHTML = '<option value="">All Cities</option>';
+  const cities = st ? [...(_citiesByState[st]||[])].sort() : [];
+  cities.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; citySelect.appendChild(o); });
+}
+
+stateSelect.addEventListener('change', () => {
+  const st = stateSelect.value;
+  rebuildCities(st); citySelect.value=''; popup.style.display='none';
+  const filtered = st ? _allFilteredStations.filter(s=>s.state===st) : _allFilteredStations;
+  _currentStations = filtered;
+  renderClusters(buildClusters(filtered)); updateStats(filtered);
+  if (st) flyToList(filtered); else { vb={x:0,y:0,w:SVG_W,h:SVG_H}; applyVB(); }
+});
+citySelect.addEventListener('change', () => {
+  const city=citySelect.value, st=stateSelect.value;
+  let filtered = st ? _allFilteredStations.filter(s=>s.state===st) : _allFilteredStations;
+  if (city) filtered = filtered.filter(s=>s.city===city);
+  _currentStations = filtered;
+  renderClusters(buildClusters(filtered)); updateStats(filtered);
+  if (city) flyToList(filtered);
+});
+resetEl.addEventListener('click', () => {
+  stateSelect.value=''; citySelect.value=''; rebuildCities('');
+  _currentStations = _allFilteredStations;
+  renderClusters(buildClusters(_allFilteredStations)); updateStats(_allFilteredStations);
+  vb={x:0,y:0,w:SVG_W,h:SVG_H}; applyVB(); popup.style.display='none';
+});
+strip.addEventListener('click', () => panel.classList.toggle('expanded'));
+
+// ── renderMarkers (called by page script via mapready event) ──
+function renderMarkers(stations) {
+  _allFilteredStations = stations;
+  _currentStations = stations;
+
+  _citiesByState = {};
+  stations.forEach(s => {
+    if (!s.state||!s.city) return;
+    if (!_citiesByState[s.state]) _citiesByState[s.state]=new Set();
+    _citiesByState[s.state].add(s.city);
+  });
+
+  const stateAqi = { sum: {}, cnt: {} };
+  stations.forEach(s => {
+    if (!s.state) return;
+    const k = normState(s.state);
+    stateAqi.sum[k] = (stateAqi.sum[k]||0) + s.aqi;
+    stateAqi.cnt[k] = (stateAqi.cnt[k]||0) + 1;
+  });
+  renderStatePaths(stateAqi);
+  renderClusters(buildClusters(stations));
+
+  const stateSet = new Set(stations.map(s=>s.state).filter(Boolean));
+  stateSelect.innerHTML = '<option value="">All States</option>';
+  [...stateSet].sort().forEach(name => {
+    const opt = document.createElement('option'); opt.value=name; opt.textContent=name;
+    stateSelect.appendChild(opt);
+  });
+  rebuildCities('');
+}
+
+// ── Fire mapready (expose on window first to fix module-script race) ──
+applyVB();
+const __api = { renderMarkers, updateStats, showBanner, project,
+  hideLoading: () => loadingEl.classList.add('hidden') };
+window.__vatavaran = __api;
+document.dispatchEvent(new CustomEvent('mapready', { detail: __api }));
+</script>

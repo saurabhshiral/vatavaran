@@ -1,0 +1,100 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import IndiaMap from '../../components/IndiaMap.astro';
+---
+<BaseLayout title="vayu · vatavaran" activeTab="vayu">
+  <IndiaMap />
+</BaseLayout>
+
+<script>
+const CPCB_API_KEY      = '579b464db66ec23bdd0000017f08499ed72e4c027a9c72421819db62';
+const CPCB_RESOURCE_ID  = '3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69';
+const CPCB_API_URL      = `https://api.data.gov.in/resource/${CPCB_RESOURCE_ID}`;
+const API_PAGE_LIMIT    = 500;
+
+const PM25_BP = [[0,30,0,50],[30,60,51,100],[60,90,101,200],[90,120,201,300],[120,250,301,400],[250,500,401,500]];
+const PM10_BP = [[0,50,0,50],[50,100,51,100],[100,250,101,200],[250,350,201,300],[350,430,301,400],[430,600,401,500]];
+function calcAQI(bp, val) {
+  for (const [clo,chi,ilo,ihi] of bp) if (val>=clo&&val<=chi) return Math.round(((ihi-ilo)/(chi-clo))*(val-clo)+ilo);
+  return null;
+}
+function computeAQI(pollutant, value) {
+  const v = parseFloat(value); if (!isFinite(v)||v<0) return null;
+  if (pollutant==='PM2.5') return calcAQI(PM25_BP,v);
+  if (pollutant==='PM10')  return calcAQI(PM10_BP,v);
+  return null;
+}
+
+const DEMO_STATIONS = [
+  {city:'Delhi',station:'IGI Airport',state:'Delhi',lat:28.56,lng:77.12,aqi:189,pollutant:'PM2.5',updated:'demo'},
+  {city:'Mumbai',station:'Bandra',state:'Maharashtra',lat:19.05,lng:72.84,aqi:62,pollutant:'PM2.5',updated:'demo'},
+  {city:'Kolkata',station:'Rabindra Bharati',state:'West Bengal',lat:22.59,lng:88.37,aqi:120,pollutant:'PM10',updated:'demo'},
+  {city:'Chennai',station:'Alandur',state:'Tamil Nadu',lat:12.99,lng:80.21,aqi:45,pollutant:'PM2.5',updated:'demo'},
+  {city:'Bengaluru',station:'Peenya',state:'Karnataka',lat:13.03,lng:77.52,aqi:58,pollutant:'PM2.5',updated:'demo'},
+  {city:'Hyderabad',station:'Central University',state:'Telangana',lat:17.48,lng:78.39,aqi:87,pollutant:'PM10',updated:'demo'},
+  {city:'Ahmedabad',station:'AUDA',state:'Gujarat',lat:23.03,lng:72.58,aqi:140,pollutant:'PM10',updated:'demo'},
+  {city:'Jaipur',station:'Shastri Nagar',state:'Rajasthan',lat:26.92,lng:75.79,aqi:95,pollutant:'PM2.5',updated:'demo'},
+  {city:'Lucknow',station:'Talkatora',state:'Uttar Pradesh',lat:26.85,lng:80.95,aqi:245,pollutant:'PM2.5',updated:'demo'},
+  {city:'Patna',station:'IGSC Planetarium',state:'Bihar',lat:25.61,lng:85.14,aqi:312,pollutant:'PM10',updated:'demo'},
+  {city:'Kanpur',station:'Nehru Nagar',state:'Uttar Pradesh',lat:26.47,lng:80.35,aqi:340,pollutant:'PM2.5',updated:'demo'},
+  {city:'Pune',station:'Shivajinagar',state:'Maharashtra',lat:18.53,lng:73.85,aqi:78,pollutant:'PM2.5',updated:'demo'},
+];
+
+async function fetchCPCBData() {
+  const pri = p => p==='PM2.5'?2:p==='PM10'?1:0;
+  const byStation = new Map();
+  const allKeys = new Set();
+  let offset = 0, page = 0;
+  const MAX_PAGES = 20;
+  while (true) {
+    if (++page > MAX_PAGES) break;
+    const url = `${CPCB_API_URL}?api-key=${CPCB_API_KEY}&format=json&limit=${API_PAGE_LIMIT}&offset=${offset}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const records = data.records || [];
+    if (!records.length) break;
+    records.forEach(r => {
+      const city    = (r.city||'').trim();
+      const station = (r.station||'').trim();
+      const state   = (r.state||'').trim();
+      const key     = `${station}|${city}`;
+      if (city && station) allKeys.add(key);
+      if (r.avg_value==='NA'||r.avg_value===null||r.avg_value===undefined) return;
+      const lat=parseFloat(r.latitude), lng=parseFloat(r.longitude);
+      if (!isFinite(lat)||!isFinite(lng)) return;
+      const pid = (r.pollutant_id||'').trim();
+      const aqi = computeAQI(pid, r.avg_value);
+      if (aqi === null) return;
+      const ex = byStation.get(key);
+      if (!ex || pri(pid)>pri(ex.pollutant) || (pri(pid)===pri(ex.pollutant)&&aqi>ex.aqi))
+        byStation.set(key, { city, station, state, lat, lng, aqi, pollutant:pid, updated:r.last_update||'' });
+    });
+    if (records.length < API_PAGE_LIMIT) break;
+    offset += API_PAGE_LIMIT;
+  }
+  return { stations: [...byStation.values()], total: allKeys.size };
+}
+
+async function initVayu(api) {
+  try {
+    const { stations, total } = await fetchCPCBData();
+    if (!stations.length) throw new Error('No records returned');
+    api.renderMarkers(stations);
+    api.updateStats(stations, total);
+  } catch (err) {
+    console.error('[vayu] CPCB fetch failed:', err);
+    api.showBanner(`Live data unavailable (${err.message}) — showing demo data.`);
+    api.renderMarkers(DEMO_STATIONS);
+    api.updateStats(DEMO_STATIONS);
+  } finally {
+    api.hideLoading();
+  }
+}
+
+if (window.__vatavaran) {
+  initVayu(window.__vatavaran);
+} else {
+  document.addEventListener('mapready', ({ detail }) => initVayu(detail));
+}
+</script>
