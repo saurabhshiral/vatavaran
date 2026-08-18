@@ -34,6 +34,7 @@ while ((m = re.exec(svgText)) !== null) statePaths[m[1]] = m[2];
 
 <div id="zoom-btns">
   <button class="zoom-btn" id="zoom-in">+</button>
+  <button class="zoom-btn" id="zoom-reset" title="Reset view">⌂</button>
   <button class="zoom-btn" id="zoom-out">−</button>
 </div>
 
@@ -111,9 +112,22 @@ const _loEl = document.getElementById('loading-overlay');
 if (_loEl) _loEl.style.display = 'flex';
 
 // ── ViewBox pan/zoom ──
+const VB_KEY = 'vatavaran-vb';
 let vb = { x: 0, y: 0, w: SVG_W, h: SVG_H };
+function saveVB() {
+  try { localStorage.setItem(VB_KEY, JSON.stringify(vb)); } catch(e) {}
+}
+function loadVB() {
+  try {
+    const s = localStorage.getItem(VB_KEY);
+    if (!s) return;
+    const p = JSON.parse(s);
+    if (p && typeof p.w === 'number' && p.w >= 35 && p.w <= SVG_W) vb = p;
+  } catch(e) {}
+}
 function applyVB() {
   svgEl.setAttribute('viewBox', `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
+  saveVB();
   refreshZoom();
 }
 function clampVB() {
@@ -121,6 +135,8 @@ function clampVB() {
   vb.h = vb.w * SVG_H / SVG_W;
   vb.x = Math.max(0, Math.min(SVG_W - vb.w, vb.x));
   vb.y = Math.max(0, Math.min(SVG_H - vb.h, vb.y));
+  // Snap-lock: fully zoomed out always lands at clean default, no drift
+  if (vb.w >= SVG_W * 0.97) { vb.x = 0; vb.y = 0; vb.w = SVG_W; vb.h = SVG_H; }
 }
 function zoomAround(factor, mx, my) {
   const nw = Math.max(35, Math.min(SVG_W, vb.w * factor));
@@ -133,9 +149,28 @@ function zoomAround(factor, mx, my) {
 
 // ── Clustering ──
 function buildClusters(stations) {
-  const CLUSTER_PX = 28;
   const displayW = mapWrap.getBoundingClientRect().width || 800;
   const pxPerUnit = displayW / vb.w;
+
+  // State-level view when zoomed out: one bubble per state showing avg AQI
+  if (vb.w > SVG_W * 0.7) {
+    const byState = {};
+    stations.forEach(s => {
+      if (!s.state) return;
+      if (!byState[s.state]) byState[s.state] = { latSum: 0, lngSum: 0, aqiSum: 0, count: 0 };
+      byState[s.state].latSum += s.lat;
+      byState[s.state].lngSum += s.lng;
+      byState[s.state].aqiSum += s.aqi;
+      byState[s.state].count++;
+    });
+    return Object.entries(byState).map(([, d]) => {
+      const avgAqi = Math.round(d.aqiSum / d.count);
+      const [cx, cy] = project(d.latSum / d.count, d.lngSum / d.count);
+      return { cx, cy, aqi: avgAqi, count: d.count, station: null, members: [], label: avgAqi, isState: true };
+    });
+  }
+
+  const CLUSTER_PX = 28;
   const minDist2 = (CLUSTER_PX / pxPerUnit) ** 2;
   const sorted = [...stations].sort((a, b) => b.aqi - a.aqi);
   const used = new Uint8Array(sorted.length);
@@ -209,7 +244,7 @@ function renderClusters(clusters) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('transform', `translate(${cl.cx.toFixed(1)},${cl.cy.toFixed(1)})`);
 
-    if (cl.count === 1) {
+    if (cl.count === 1 && !cl.isState) {
       // Single station dot
       const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       c.setAttribute('cx', '0'); c.setAttribute('cy', '0');
@@ -258,7 +293,7 @@ function renderClusters(clusters) {
       // Adaptive cluster count font, grows with zoom
       const clusterFs = Math.min(16, Math.max(11, 7 + pxPerUnit));
       label.setAttribute('font-size', (clusterFs / pxPerUnit).toFixed(1));
-      label.textContent = cl.count;
+      label.textContent = cl.label ?? cl.count;
 
       // Click cluster: zoom into it
       [outer, inner].forEach(el => el.addEventListener('click', e => {
@@ -323,7 +358,7 @@ window.addEventListener('mousemove', e => {
   vb.x = dragStart.vbx - dx * s; vb.y = dragStart.vby - dy * s;
   clampVB(); shiftVB();
 });
-window.addEventListener('mouseup', () => { if (dragStart) { dragStart = null; refreshZoom(); } });
+window.addEventListener('mouseup', () => { if (dragStart) { dragStart = null; refreshZoom(); saveVB(); } });
 
 // ── Zoom (wheel) ──
 mapWrap.addEventListener('wheel', e => {
@@ -350,12 +385,17 @@ mapWrap.addEventListener('touchmove', e => {
   }
   touches = e.touches;
 }, { passive: false });
-mapWrap.addEventListener('touchend', e => { if (!e.touches.length) { touches = null; refreshZoom(); } });
+mapWrap.addEventListener('touchend', e => { if (!e.touches.length) { touches = null; refreshZoom(); saveVB(); } });
 mapWrap.addEventListener('touchcancel', () => { touches = null; refreshZoom(); });
 
 // ── Zoom buttons ──
 document.getElementById('zoom-in').onclick  = () => zoomAround(0.7, 0.5, 0.5);
 document.getElementById('zoom-out').onclick = () => zoomAround(1.5, 0.5, 0.5);
+document.getElementById('zoom-reset').onclick = () => {
+  vb = { x: 0, y: 0, w: SVG_W, h: SVG_H };
+  try { localStorage.removeItem(VB_KEY); } catch(e) {}
+  applyVB();
+};
 
 // ── Fly to station list ──
 function flyToList(list) {
@@ -490,6 +530,7 @@ function renderMarkers(stations) {
 }
 
 // ── Fire mapready (expose on window first to fix module-script race) ──
+loadVB();
 try { applyVB(); } catch(e) { console.error('[IndiaMap] applyVB:', e); }
 const __api = { renderMarkers, updateStats, showBanner, project,
   hideLoading: () => {
