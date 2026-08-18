@@ -2,16 +2,9 @@
 <!--
   vatavaran · vayu — Air Quality Dashboard for India
   ====================================================
-  Data source: India CPCB real-time AQI via data.gov.in
-  API endpoint: https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69
-
-  HOW TO GET A FREE data.gov.in API KEY
-  ----------------------------------------
-  1. Go to https://data.gov.in
-  2. Click "Register" in the top-right corner and create a free account.
-  3. After logging in, go to https://data.gov.in/user/me and copy your API key.
-  4. Replace the placeholder value in the CPCB_API_KEY constant below.
-  5. No payment required — the key is free for non-commercial use.
+  Pure SVG map — no tiles, no map library, no API keys
+  State boundaries: DataMeet Admin2.json (SOI-referenced)
+  Station data:     CPCB real-time AQI via data.gov.in
 -->
 <html lang="en">
 <head>
@@ -20,17 +13,11 @@
   <title>vayu · vatavaran</title>
   <meta name="description" content="Real-time air quality monitoring across India — powered by CPCB data." />
 
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
   <style>
-    /* ── Reset ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
@@ -59,26 +46,14 @@
 
     /* ── Nav ── */
     nav {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      z-index: 200;
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
       height: var(--nav-h);
-      background: rgba(10, 15, 13, 0.95);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: rgba(10,15,13,0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 20px;
+      display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
     }
-
-    .wordmark {
-      font-size: 18px; font-weight: 600; letter-spacing: -0.5px;
-      color: var(--text); text-decoration: none;
-    }
+    .wordmark { font-size: 18px; font-weight: 600; letter-spacing: -0.5px; color: var(--text); text-decoration: none; }
     .wordmark span { color: var(--accent); }
-
     .tabs { display: flex; gap: 4px; }
     .tabs a {
       font-size: 13px; font-weight: 500; letter-spacing: 0.3px;
@@ -91,200 +66,99 @@
 
     /* ── Stats bar ── */
     #stats-bar {
-      position: fixed;
-      top: var(--nav-h); left: 0; right: 0;
-      z-index: 190;
+      position: fixed; top: var(--nav-h); left: 0; right: 0; z-index: 190;
       height: var(--stats-h);
-      background: rgba(10, 15, 13, 0.90);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: rgba(10,15,13,0.90); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      padding: 0 16px;
+      display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 16px;
     }
-
     .stats-pill {
-      font-size: 12px;
-      color: var(--text-muted);
-      padding: 4px 12px;
-      border-radius: 20px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      white-space: nowrap;
-      display: flex;
-      align-items: center;
-      gap: 5px;
+      font-size: 12px; color: var(--text-muted); padding: 4px 12px;
+      border-radius: 20px; border: 1px solid var(--border); background: var(--surface);
+      white-space: nowrap; display: flex; align-items: center; gap: 5px;
     }
-
-    .pill-num {
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700;
-      font-size: 13px;
-      color: var(--text);
-    }
+    .pill-num { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; color: var(--text); }
 
     /* ── Filter panel ── */
     #filter-panel {
-      position: fixed;
-      left: 0;
-      top: calc(var(--nav-h) + var(--stats-h));
-      bottom: 0;
-      z-index: 80;
-      width: var(--panel-collapsed);
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-      overflow: hidden;
-      display: flex;
+      position: fixed; left: 0;
+      top: calc(var(--nav-h) + var(--stats-h)); bottom: 0; z-index: 80;
+      width: var(--panel-collapsed); background: var(--surface); border-right: 1px solid var(--border);
+      transition: width 0.28s cubic-bezier(0.4,0,0.2,1); overflow: hidden; display: flex;
     }
-
     #filter-panel.expanded { width: var(--panel-expanded); }
-
     #filter-strip {
-      width: var(--panel-collapsed);
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      gap: 10px;
-      padding: 0;
+      width: var(--panel-collapsed); flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; gap: 10px;
     }
-
-    #filter-strip:hover .filter-label,
-    #filter-strip:hover .filter-arrow { color: var(--text); }
-
-    .filter-label {
-      writing-mode: vertical-rl;
-      transform: rotate(180deg);
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 1.8px;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      transition: color 0.15s;
-      user-select: none;
-    }
-
-    .filter-arrow {
-      font-size: 13px;
-      color: var(--text-muted);
-      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s;
-      user-select: none;
-      line-height: 1;
-    }
-
+    #filter-strip:hover .filter-label, #filter-strip:hover .filter-arrow { color: var(--text); }
+    .filter-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-muted); transition: color 0.15s; user-select: none; }
+    .filter-arrow { font-size: 13px; color: var(--text-muted); transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), color 0.15s; user-select: none; line-height: 1; }
     #filter-panel.expanded .filter-arrow { transform: rotate(180deg); }
-
-    #filter-content {
-      flex: 1;
-      padding: 20px 16px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.18s;
-      min-width: calc(var(--panel-expanded) - var(--panel-collapsed));
-    }
-
-    #filter-panel.expanded #filter-content {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .filter-heading {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-
+    #filter-content { flex: 1; padding: 20px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; opacity: 0; pointer-events: none; transition: opacity 0.18s; min-width: calc(var(--panel-expanded) - var(--panel-collapsed)); }
+    #filter-panel.expanded #filter-content { opacity: 1; pointer-events: auto; }
+    .filter-heading { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-muted); padding-bottom: 8px; border-bottom: 1px solid var(--border); }
     .filter-field { display: flex; flex-direction: column; gap: 6px; }
-
-    .filter-field label {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: var(--text-muted);
-    }
-
+    .filter-field label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); }
     .filter-select {
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      font-family: 'Space Grotesk', sans-serif;
-      font-size: 13px;
-      padding: 8px 28px 8px 10px;
-      appearance: none;
-      -webkit-appearance: none;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px;
+      padding: 8px 28px 8px 10px; appearance: none; -webkit-appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237DA882' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 10px center;
-      cursor: pointer;
-      width: 100%;
+      background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; width: 100%;
     }
-
     .filter-select:focus { outline: none; border-color: var(--accent); }
     .filter-select option { background: var(--surface-2); }
-
-    .filter-reset {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-decoration: underline;
-      cursor: pointer;
-      text-align: right;
-      transition: color 0.15s;
-      margin-top: 4px;
-    }
+    .filter-reset { font-size: 12px; color: var(--text-muted); text-decoration: underline; cursor: pointer; text-align: right; transition: color 0.15s; margin-top: 4px; }
     .filter-reset:hover { color: var(--text); }
 
-    /* ── Map ── */
-    #map {
+    /* ── Map wrapper ── */
+    #map-wrap {
       position: fixed;
-      top: calc(var(--nav-h) + var(--stats-h));
-      left: 0; right: 0; bottom: 0;
+      top: calc(var(--nav-h) + var(--stats-h)); left: 0; right: 0; bottom: 0;
+      overflow: hidden; background: var(--bg);
+      cursor: grab; user-select: none;
+    }
+    #map-wrap.dragging { cursor: grabbing; }
+
+    #india-svg { width: 100%; height: 100%; display: block; }
+
+    .state-path {
+      stroke: #2D4A32; stroke-width: 0.8; stroke-opacity: 0.7;
+      transition: fill-opacity 0.12s;
     }
 
-    .leaflet-control-attribution { font-size: 10px !important; }
-    .leaflet-container { background: var(--bg); }
+    .station-dot {
+      stroke: rgba(255,255,255,0.25); stroke-width: 1.5;
+      cursor: pointer; fill-opacity: 0.92;
+      transition: r 0.1s, stroke-width 0.1s;
+    }
+    .station-dot:hover { stroke: rgba(255,255,255,0.8); stroke-width: 2; fill-opacity: 1; }
 
     /* ── State hover tooltip ── */
-    .state-tooltip {
-      background: var(--surface) !important;
-      border: 1px solid var(--border) !important;
-      border-radius: 8px !important;
-      padding: 6px 10px !important;
-      font-family: 'Space Grotesk', sans-serif !important;
-      font-size: 12px !important;
-      color: var(--text) !important;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
-      white-space: nowrap;
+    #state-tip {
+      position: fixed; z-index: 300; pointer-events: none;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 10px; font-size: 12px; color: var(--text);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5); white-space: nowrap;
+      display: none;
     }
-    .state-tooltip::before { display: none !important; }
 
     /* ── Station popup ── */
-    .leaflet-popup-content-wrapper {
-      background: var(--surface) !important;
-      border: 1px solid var(--border) !important;
-      border-radius: 12px !important;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
-      padding: 0 !important;
+    #popup {
+      position: fixed; z-index: 250;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6); min-width: 200px;
+      transform: translate(-50%, calc(-100% - 14px));
+      display: none;
     }
-    .leaflet-popup-content { margin: 0 !important; font-family: 'Space Grotesk', sans-serif; color: var(--text); min-width: 200px; }
-    .leaflet-popup-tip { background: var(--surface) !important; }
-    .leaflet-popup-close-button { color: var(--text-muted) !important; font-size: 18px !important; top: 8px !important; right: 10px !important; }
-
+    #popup-close {
+      position: absolute; top: 8px; right: 10px;
+      background: none; border: none; color: var(--text-muted);
+      font-size: 18px; cursor: pointer; line-height: 1; padding: 0;
+    }
+    #popup-close:hover { color: var(--text); }
     .popup-inner { padding: 16px 18px; }
     .popup-city { font-size: 15px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
     .popup-aqi-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
@@ -295,16 +169,20 @@
     .popup-meta span { display: flex; gap: 4px; }
     .popup-meta strong { color: var(--text); }
 
+    /* ── Zoom buttons ── */
+    #zoom-btns { position: fixed; right: 20px; bottom: 110px; z-index: 90; display: flex; flex-direction: column; gap: 4px; }
+    .zoom-btn {
+      width: 32px; height: 32px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; user-select: none; transition: background 0.15s;
+    }
+    .zoom-btn:hover { background: var(--surface-2); }
+
     /* ── Legend ── */
     #legend {
-      position: fixed;
-      bottom: 24px; right: 20px;
-      z-index: 90;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px 14px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      position: fixed; bottom: 24px; right: 20px; z-index: 90;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
     .legend-title { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 8px; }
     .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11px; color: var(--text); }
@@ -312,28 +190,19 @@
 
     /* ── Loading ── */
     #loading-overlay {
-      position: fixed; inset: 0; z-index: 300;
-      background: var(--bg);
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
-      transition: opacity 0.5s;
+      position: fixed; inset: 0; z-index: 400;
+      background: var(--bg); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px; transition: opacity 0.5s;
     }
     #loading-overlay.fade-out { opacity: 0; pointer-events: none; }
-
-    .spinner {
-      width: 36px; height: 36px;
-      border: 3px solid var(--border); border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
+    .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { font-size: 14px; color: var(--text-muted); }
 
     /* ── Error banner ── */
     #error-banner {
-      position: fixed;
-      top: calc(var(--nav-h) + var(--stats-h) + 12px);
-      left: 50%; transform: translateX(-50%);
-      z-index: 250;
+      position: fixed; top: calc(var(--nav-h) + var(--stats-h) + 12px);
+      left: 50%; transform: translateX(-50%); z-index: 350;
       background: #2D1A1A; border: 1px solid #5C2020; border-radius: 10px;
       padding: 10px 18px; font-size: 13px; color: #FF8A80;
       max-width: 480px; text-align: center; display: none;
@@ -369,22 +238,38 @@
     <div class="filter-heading">Filter Stations</div>
     <div class="filter-field">
       <label for="filter-state">State</label>
-      <select id="filter-state" class="filter-select">
-        <option value="">All States</option>
-      </select>
+      <select id="filter-state" class="filter-select"><option value="">All States</option></select>
     </div>
     <div class="filter-field">
       <label for="filter-city">City</label>
-      <select id="filter-city" class="filter-select">
-        <option value="">All Cities</option>
-      </select>
+      <select id="filter-city" class="filter-select"><option value="">All Cities</option></select>
     </div>
     <div class="filter-reset" id="filter-reset">Reset filters</div>
   </div>
 </div>
 
-<!-- ── Map ── -->
-<div id="map"></div>
+<!-- ── SVG Map ── -->
+<div id="map-wrap">
+  <svg id="india-svg" viewBox="0 0 612 696" preserveAspectRatio="xMidYMid meet">
+    <g id="state-layer"></g>
+    <g id="marker-layer"></g>
+  </svg>
+</div>
+
+<!-- ── State tooltip ── -->
+<div id="state-tip"></div>
+
+<!-- ── Station popup ── -->
+<div id="popup">
+  <button id="popup-close">×</button>
+  <div id="popup-inner" class="popup-inner"></div>
+</div>
+
+<!-- ── Zoom buttons ── -->
+<div id="zoom-btns">
+  <div class="zoom-btn" id="zoom-in" title="Zoom in">+</div>
+  <div class="zoom-btn" id="zoom-out" title="Zoom out">−</div>
+</div>
 
 <!-- ── Legend ── -->
 <div id="legend">
@@ -400,7 +285,7 @@
   </div>
 </div>
 
-<!-- ── Loading overlay ── -->
+<!-- ── Loading ── -->
 <div id="loading-overlay">
   <div class="spinner"></div>
   <div class="loading-text">Loading air quality data…</div>
@@ -411,16 +296,23 @@
 
 <script>
 /* ================================================================
-   vatavaran · vayu — Air Quality Dashboard
-   ================================================================
-   REPLACE THIS KEY WITH YOUR data.gov.in API KEY
-   Get a free key at https://data.gov.in (register → profile → API key)
+   vatavaran · vayu
    ================================================================ */
-const CPCB_API_KEY = '579b464db66ec23bdd0000017f08499ed72e4c027a9c72421819db62';
-
+const CPCB_API_KEY     = '579b464db66ec23bdd0000017f08499ed72e4c027a9c72421819db62';
 const CPCB_RESOURCE_ID = '3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69';
 const CPCB_API_URL     = `https://api.data.gov.in/resource/${CPCB_RESOURCE_ID}`;
 const API_PAGE_LIMIT   = 500;
+
+/* ── Projection (equirectangular fitted to India) ── */
+const SVG_W = 612, SVG_H = 696;
+const LNG0 = 68.1, LNG1 = 97.4, LAT0 = 6.5, LAT1 = 37.1;
+
+function project(lat, lng) {
+  return [
+    (lng - LNG0) / (LNG1 - LNG0) * SVG_W,
+    (LAT1 - lat) / (LAT1 - LAT0) * SVG_H,
+  ];
+}
 
 /* ── AQI helpers ── */
 function aqiColor(aqi) {
@@ -431,7 +323,6 @@ function aqiColor(aqi) {
   if (aqi <= 400) return '#F44336';
   return '#B71C1C';
 }
-
 function aqiVerdict(aqi) {
   if (aqi <= 50)  return 'Good';
   if (aqi <= 100) return 'Satisfactory';
@@ -441,7 +332,7 @@ function aqiVerdict(aqi) {
   return 'Severe';
 }
 
-/* ── CPCB AQI breakpoints (concentration → sub-index) ── */
+/* ── CPCB AQI breakpoints ── */
 const AQI_BREAKPOINTS = {
   'PM2.5': [[0,30,0,50],[31,60,51,100],[61,90,101,200],[91,120,201,300],[121,250,301,400],[251,500,401,500]],
   'PM10':  [[0,50,0,50],[51,100,51,100],[101,250,101,200],[251,350,201,300],[351,430,301,400],[431,600,401,500]],
@@ -453,10 +344,10 @@ const AQI_BREAKPOINTS = {
   'Pb':    [[0,0.5,0,50],[0.51,1,51,100],[1.1,2,101,200],[2.1,3,201,300],[3.1,3.5,301,400],[3.51,5,401,500]],
 };
 
-function computeAQI(pollutantId, concentration) {
-  const c = parseFloat(concentration);
+function computeAQI(pid, conc) {
+  const c = parseFloat(conc);
   if (isNaN(c) || c < 0) return null;
-  const bps = AQI_BREAKPOINTS[pollutantId];
+  const bps = AQI_BREAKPOINTS[pid];
   if (!bps) return null;
   for (const [cLo, cHi, iLo, iHi] of bps) {
     if (c <= cHi) return Math.round(((iHi - iLo) / (cHi - cLo)) * (c - cLo) + iLo);
@@ -508,32 +399,31 @@ const CITY_COORDS = {
 
 /* ── Demo data ── */
 const DEMO_STATIONS = [
-  { city:'Delhi',      station:'ITO',              state:'Delhi',             lat:28.6286, lng:77.2402, aqi:287, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Mumbai',     station:'Bandra',            state:'Maharashtra',       lat:19.0596, lng:72.8295, aqi:82,  pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Bengaluru',  station:'Silk Board',        state:'Karnataka',         lat:12.9170, lng:77.6101, aqi:64,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Chennai',    station:'Manali',            state:'Tamil Nadu',        lat:13.1657, lng:80.2615, aqi:110, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Kolkata',    station:'Rabindra Sarani',   state:'West Bengal',       lat:22.5726, lng:88.3639, aqi:198, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Hyderabad',  station:'Bollaram',          state:'Telangana',         lat:17.4974, lng:78.3612, aqi:95,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Ahmedabad',  station:'Maninagar',         state:'Gujarat',           lat:22.9963, lng:72.6034, aqi:172, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Pune',       station:'Katraj',            state:'Maharashtra',       lat:18.4529, lng:73.8481, aqi:55,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Lucknow',    station:'Lalbagh',           state:'Uttar Pradesh',     lat:26.8467, lng:80.9462, aqi:324, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Jaipur',     station:'Shastri Nagar',     state:'Rajasthan',         lat:26.9124, lng:75.7873, aqi:140, pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Kanpur',     station:'Nehru Nagar',       state:'Uttar Pradesh',     lat:26.4499, lng:80.3319, aqi:356, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Nagpur',     station:'Civil Lines',       state:'Maharashtra',       lat:21.1502, lng:79.0956, aqi:88,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Patna',      station:'Danapur',           state:'Bihar',             lat:25.5941, lng:85.1376, aqi:261, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Indore',     station:'Palasia',           state:'Madhya Pradesh',    lat:22.7196, lng:75.8577, aqi:73,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Bhopal',     station:'TT Nagar',          state:'Madhya Pradesh',    lat:23.2599, lng:77.4126, aqi:118, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Visakhapatnam',station:'Gajuwaka',        state:'Andhra Pradesh',    lat:17.6868, lng:83.2185, aqi:76,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Surat',      station:'Athwa',             state:'Gujarat',           lat:21.1702, lng:72.8311, aqi:131, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Vadodara',   station:'Makarpura',         state:'Gujarat',           lat:22.3072, lng:73.1812, aqi:107, pollutant:'PM10',  updated:'2026-08-17 08:00' },
-  { city:'Amritsar',   station:'Ratanpur',          state:'Punjab',            lat:31.6340, lng:74.8723, aqi:215, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
-  { city:'Guwahati',   station:'Pan Bazar',         state:'Assam',             lat:26.1845, lng:91.7362, aqi:42,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Delhi',         station:'ITO',            state:'Delhi',          lat:28.6286, lng:77.2402, aqi:287, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Mumbai',        station:'Bandra',          state:'Maharashtra',    lat:19.0596, lng:72.8295, aqi:82,  pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Bengaluru',     station:'Silk Board',      state:'Karnataka',      lat:12.9170, lng:77.6101, aqi:64,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Chennai',       station:'Manali',          state:'Tamil Nadu',     lat:13.1657, lng:80.2615, aqi:110, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Kolkata',       station:'Rabindra Sarani', state:'West Bengal',    lat:22.5726, lng:88.3639, aqi:198, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Hyderabad',     station:'Bollaram',        state:'Telangana',      lat:17.4974, lng:78.3612, aqi:95,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Ahmedabad',     station:'Maninagar',       state:'Gujarat',        lat:22.9963, lng:72.6034, aqi:172, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Pune',          station:'Katraj',          state:'Maharashtra',    lat:18.4529, lng:73.8481, aqi:55,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Lucknow',       station:'Lalbagh',         state:'Uttar Pradesh',  lat:26.8467, lng:80.9462, aqi:324, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Jaipur',        station:'Shastri Nagar',   state:'Rajasthan',      lat:26.9124, lng:75.7873, aqi:140, pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Kanpur',        station:'Nehru Nagar',     state:'Uttar Pradesh',  lat:26.4499, lng:80.3319, aqi:356, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Nagpur',        station:'Civil Lines',     state:'Maharashtra',    lat:21.1502, lng:79.0956, aqi:88,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Patna',         station:'Danapur',         state:'Bihar',          lat:25.5941, lng:85.1376, aqi:261, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Indore',        station:'Palasia',         state:'Madhya Pradesh', lat:22.7196, lng:75.8577, aqi:73,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Bhopal',        station:'TT Nagar',        state:'Madhya Pradesh', lat:23.2599, lng:77.4126, aqi:118, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Visakhapatnam', station:'Gajuwaka',        state:'Andhra Pradesh', lat:17.6868, lng:83.2185, aqi:76,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Surat',         station:'Athwa',           state:'Gujarat',        lat:21.1702, lng:72.8311, aqi:131, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Vadodara',      station:'Makarpura',       state:'Gujarat',        lat:22.3072, lng:73.1812, aqi:107, pollutant:'PM10',  updated:'2026-08-17 08:00' },
+  { city:'Amritsar',      station:'Ratanpur',        state:'Punjab',         lat:31.6340, lng:74.8723, aqi:215, pollutant:'PM2.5', updated:'2026-08-17 08:00' },
+  { city:'Guwahati',      station:'Pan Bazar',       state:'Assam',          lat:26.1845, lng:91.7362, aqi:42,  pollutant:'PM10',  updated:'2026-08-17 08:00' },
 ];
 
-/* ── Parse API records: prefer PM2.5, fallback PM10 ── */
+/* ── Parse API records ── */
 function parseApiRecords(records) {
   const byStation = new Map();
-
   records.forEach(r => {
     const city    = (r.city    || '').trim();
     const station = (r.station || city).trim();
@@ -548,70 +438,64 @@ function parseApiRecords(records) {
       [lat, lng] = coords;
     }
 
-    const pollutantId = (r.pollutant_id || '').trim();
-    const avgValue    = r.avg_value;
+    const pid = (r.pollutant_id || '').trim();
+    const avg = r.avg_value;
+    if (!avg || String(avg).trim().toUpperCase() === 'NA') return;
 
-    /* Skip NA or missing */
-    if (avgValue === 'NA' || avgValue === null || avgValue === undefined) return;
-    if (String(avgValue).trim().toUpperCase() === 'NA') return;
-
-    const aqi = computeAQI(pollutantId, avgValue);
+    const aqi = computeAQI(pid, avg);
     if (!aqi || aqi <= 0) return;
 
     const key = `${city}||${station}`;
-    const existing = byStation.get(key);
-
-    if (!existing) {
-      byStation.set(key, { city, station, state, lat, lng, aqi, pollutant: pollutantId, updated: r.last_update || '' });
+    const ex  = byStation.get(key);
+    if (!ex) {
+      byStation.set(key, { city, station, state, lat, lng, aqi, pollutant: pid, updated: r.last_update || '' });
     } else {
-      /* PM2.5 > PM10 > others; within same priority, take higher AQI */
-      const priority = p => p === 'PM2.5' ? 2 : p === 'PM10' ? 1 : 0;
-      const existPri = priority(existing.pollutant);
-      const newPri   = priority(pollutantId);
-      if (newPri > existPri || (newPri === existPri && aqi > existing.aqi)) {
-        byStation.set(key, { city, station, state, lat, lng, aqi, pollutant: pollutantId, updated: r.last_update || '' });
+      const pri = p => p === 'PM2.5' ? 2 : p === 'PM10' ? 1 : 0;
+      if (pri(pid) > pri(ex.pollutant) || (pri(pid) === pri(ex.pollutant) && aqi > ex.aqi)) {
+        byStation.set(key, { city, station, state, lat, lng, aqi, pollutant: pid, updated: r.last_update || '' });
       }
     }
   });
-
   return Array.from(byStation.values());
 }
 
-/* ── Fetch live CPCB data (paginated) ── */
+/* ── Fetch CPCB ── */
 async function fetchCPCBData() {
-  const params = new URLSearchParams({ 'api-key': CPCB_API_KEY, format: 'json', limit: API_PAGE_LIMIT, offset: 0 });
-  const res = await fetch(`${CPCB_API_URL}?${params}`);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const p0 = new URLSearchParams({ 'api-key': CPCB_API_KEY, format: 'json', limit: API_PAGE_LIMIT, offset: 0 });
+  const res = await fetch(`${CPCB_API_URL}?${p0}`);
+  if (!res.ok) throw new Error(`API ${res.status}`);
   const json = await res.json();
   let records = json.records || json.data || json.result || [];
   const total = parseInt(json.total) || records.length;
   if (total > API_PAGE_LIMIT) {
     const pages = Math.ceil(total / API_PAGE_LIMIT);
-    const fetches = [];
+    const more = [];
     for (let p = 1; p < pages; p++) {
-      const pg = new URLSearchParams({ 'api-key': CPCB_API_KEY, format: 'json', limit: API_PAGE_LIMIT, offset: p * API_PAGE_LIMIT });
-      fetches.push(fetch(`${CPCB_API_URL}?${pg}`).then(r => r.json()).then(j => j.records || j.data || []));
+      const pp = new URLSearchParams({ 'api-key': CPCB_API_KEY, format: 'json', limit: API_PAGE_LIMIT, offset: p * API_PAGE_LIMIT });
+      more.push(fetch(`${CPCB_API_URL}?${pp}`).then(r => r.json()).then(j => j.records || j.data || []));
     }
-    (await Promise.all(fetches)).forEach(r => records.push(...r));
+    (await Promise.all(more)).forEach(r => records.push(...r));
   }
   return parseApiRecords(records);
 }
 
+/* ── Banner ── */
+function showBanner(msg, type = 'error') {
+  const el = document.getElementById('error-banner');
+  el.textContent = msg; el.style.display = 'block';
+  if (type === 'info') { el.style.background='#1A2E1F'; el.style.borderColor='#2D4A32'; el.style.color='#7DA882'; }
+  else { el.style.background='#2D1A1A'; el.style.borderColor='#5C2020'; el.style.color='#FF8A80'; }
+  setTimeout(() => { el.style.display = 'none'; }, 8000);
+}
+
 /* ── Stats bar ── */
-function updateStats(stations) {
-  if (stations.length === 0) return;
-  const sorted = [...stations].sort((a, b) => b.aqi - a.aqi);
-  const worst  = sorted[0];
-  const best   = sorted[sorted.length - 1];
-
-  document.getElementById('stat-count').innerHTML =
-    `<span class="pill-num">${stations.length}</span>&nbsp;stations reporting`;
-
-  document.getElementById('stat-worst').innerHTML =
-    `Worst:&nbsp;<span class="pill-num" style="color:${aqiColor(worst.aqi)}">${worst.city} · ${worst.aqi}</span>`;
-
-  document.getElementById('stat-best').innerHTML =
-    `Best:&nbsp;<span class="pill-num" style="color:${aqiColor(best.aqi)}">${best.city} · ${best.aqi}</span>`;
+function updateStats(list) {
+  if (!list.length) return;
+  const sorted = [...list].sort((a, b) => b.aqi - a.aqi);
+  const worst = sorted[0], best = sorted[sorted.length - 1];
+  document.getElementById('stat-count').innerHTML = `<span class="pill-num">${list.length}</span>&nbsp;stations reporting`;
+  document.getElementById('stat-worst').innerHTML = `Worst:&nbsp;<span class="pill-num" style="color:${aqiColor(worst.aqi)}">${worst.city} · ${worst.aqi}</span>`;
+  document.getElementById('stat-best').innerHTML  = `Best:&nbsp;<span class="pill-num" style="color:${aqiColor(best.aqi)}">${best.city} · ${best.aqi}</span>`;
 }
 
 /* ── Popup HTML ── */
@@ -619,8 +503,7 @@ function buildPopupHTML(s) {
   const color   = aqiColor(s.aqi);
   const verdict = aqiVerdict(s.aqi);
   const name    = (s.station && s.station !== s.city) ? `${s.city} · ${s.station}` : s.city;
-  return `<div class="popup-inner">
-    <div class="popup-city">${name}</div>
+  return `<div class="popup-city">${name}</div>
     <div class="popup-aqi-row">
       <span class="popup-aqi-val" style="color:${color}">${s.aqi}</span>
       <span class="popup-aqi-label">AQI</span>
@@ -629,61 +512,190 @@ function buildPopupHTML(s) {
     <div class="popup-meta">
       <span><strong>Pollutant&nbsp;</strong>${s.pollutant}</span>
       ${s.updated ? `<span><strong>Updated&nbsp;</strong>${s.updated}</span>` : ''}
-    </div>
-  </div>`;
+    </div>`;
 }
 
-/* ── Error banner ── */
-function showBanner(msg, type = 'error') {
-  const el = document.getElementById('error-banner');
-  el.textContent = msg;
-  el.style.display = 'block';
-  if (type === 'info') {
-    el.style.background  = '#1A2E1F';
-    el.style.borderColor = '#2D4A32';
-    el.style.color       = '#7DA882';
-  } else {
-    el.style.background  = '#2D1A1A';
-    el.style.borderColor = '#5C2020';
-    el.style.color       = '#FF8A80';
-  }
-  setTimeout(() => { el.style.display = 'none'; }, 8000);
+/* ── GeoJSON → SVG path string ── */
+function ringToD(ring) {
+  return ring.map((pt, i) => {
+    const [x, y] = project(pt[1], pt[0]);
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join('') + 'Z';
 }
+function featureToD(feature) {
+  const g = feature.geometry;
+  if (!g) return '';
+  const rings = g.type === 'Polygon' ? g.coordinates : g.coordinates.flat();
+  return rings.map(ringToD).join('');
+}
+
+/* ── State name from GeoJSON feature ── */
+function geoStateName(f) {
+  return f.properties.ST_NM || f.properties.NAME_1 || f.properties.State || f.properties.name || '';
+}
+
+/* ── Normalize state name for matching ── */
+function normState(s) {
+  return (s || '').toLowerCase().replace(/&/g, 'and').replace(/\s+/g, ' ').trim();
+}
+
+/* ── ViewBox pan/zoom ── */
+const svgEl  = document.getElementById('india-svg');
+const mapWrap = document.getElementById('map-wrap');
+let vb = { x: 0, y: 0, w: SVG_W, h: SVG_H };
+
+function applyVB() {
+  svgEl.setAttribute('viewBox', `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
+}
+function clampVB() {
+  vb.w = Math.max(80, Math.min(SVG_W, vb.w));
+  vb.h = vb.w * SVG_H / SVG_W;
+  vb.x = Math.max(0, Math.min(SVG_W - vb.w, vb.x));
+  vb.y = Math.max(0, Math.min(SVG_H - vb.h, vb.y));
+}
+function zoomAround(factor, mx, my) {
+  const newW = Math.max(80, Math.min(SVG_W, vb.w * factor));
+  const newH = newW * SVG_H / SVG_W;
+  vb.x += mx * (vb.w - newW);
+  vb.y += my * (vb.h - newH);
+  vb.w = newW; vb.h = newH;
+  clampVB(); applyVB();
+}
+
+/* Wheel zoom */
+mapWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = mapWrap.getBoundingClientRect();
+  const mx   = (e.clientX - rect.left) / rect.width;
+  const my   = (e.clientY - rect.top)  / rect.height;
+  zoomAround(e.deltaY > 0 ? 1.2 : 1/1.2, mx, my);
+}, { passive: false });
+
+/* Mouse pan */
+let drag = null, dragMoved = false;
+mapWrap.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  drag = { cx: e.clientX, cy: e.clientY, vx: vb.x, vy: vb.y };
+  dragMoved = false;
+  mapWrap.classList.add('dragging');
+});
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.cx, dy = e.clientY - drag.cy;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+  const rect = mapWrap.getBoundingClientRect();
+  vb.x = drag.vx - dx / rect.width  * vb.w;
+  vb.y = drag.vy - dy / rect.height * vb.h;
+  clampVB(); applyVB();
+});
+window.addEventListener('mouseup', () => { drag = null; mapWrap.classList.remove('dragging'); });
+
+/* Touch pan */
+let touch0 = null;
+mapWrap.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) touch0 = { cx: e.touches[0].clientX, cy: e.touches[0].clientY, vx: vb.x, vy: vb.y };
+}, { passive: true });
+mapWrap.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1 && touch0) {
+    const rect = mapWrap.getBoundingClientRect();
+    vb.x = touch0.vx - (e.touches[0].clientX - touch0.cx) / rect.width  * vb.w;
+    vb.y = touch0.vy - (e.touches[0].clientY - touch0.cy) / rect.height * vb.h;
+    clampVB(); applyVB();
+  }
+}, { passive: false });
+mapWrap.addEventListener('touchend', () => { touch0 = null; });
+
+/* Zoom buttons */
+document.getElementById('zoom-in').onclick  = () => zoomAround(1/1.5, 0.5, 0.5);
+document.getElementById('zoom-out').onclick = () => zoomAround(1.5,   0.5, 0.5);
+
+/* Fly to bounding box of a station list */
+function flyToList(list) {
+  if (!list.length) { vb = { x:0, y:0, w:SVG_W, h:SVG_H }; applyVB(); return; }
+  const pts = list.map(s => project(s.lat, s.lng));
+  const xs  = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const pad = list.length === 1 ? 80 : 40;
+  vb.x = Math.max(0, Math.min(...xs) - pad);
+  vb.y = Math.max(0, Math.min(...ys) - pad);
+  vb.w = Math.max(...xs) - Math.min(...xs) + pad * 2;
+  vb.h = vb.w * SVG_H / SVG_W;
+  clampVB(); applyVB();
+}
+
+/* Convert SVG coordinate to screen pixel */
+function svgToScreen(sx, sy) {
+  const pt = svgEl.createSVGPoint();
+  pt.x = sx; pt.y = sy;
+  const sp = pt.matrixTransform(svgEl.getScreenCTM());
+  return [sp.x, sp.y];
+}
+
+/* ── Popup ── */
+const popup      = document.getElementById('popup');
+const popupInner = document.getElementById('popup-inner');
+document.getElementById('popup-close').onclick = () => { popup.style.display = 'none'; };
+
+function showPopup(s) {
+  const [sx, sy] = project(s.lat, s.lng);
+  const [px, py] = svgToScreen(sx, sy);
+  popup.style.left    = `${px}px`;
+  popup.style.top     = `${py}px`;
+  popup.style.display = 'block';
+  popupInner.innerHTML = buildPopupHTML(s);
+}
+
+/* ── State tooltip ── */
+const stateTip = document.getElementById('state-tip');
+function showTip(e, html) {
+  stateTip.innerHTML = html;
+  stateTip.style.display = 'block';
+  moveTip(e);
+}
+function moveTip(e) {
+  const x = Math.min(e.clientX + 12, window.innerWidth  - stateTip.offsetWidth  - 8);
+  const y = Math.min(e.clientY + 12, window.innerHeight - stateTip.offsetHeight - 8);
+  stateTip.style.left = `${x}px`;
+  stateTip.style.top  = `${y}px`;
+}
+function hideTip() { stateTip.style.display = 'none'; }
+
+/* ── Render markers ── */
+const markerLayer = document.getElementById('marker-layer');
+
+function renderMarkers(list) {
+  markerLayer.innerHTML = '';
+  list.forEach(s => {
+    const [cx, cy] = project(s.lat, s.lng);
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', cx.toFixed(1));
+    c.setAttribute('cy', cy.toFixed(1));
+    c.setAttribute('r', '6');
+    c.setAttribute('fill', aqiColor(s.aqi));
+    c.setAttribute('class', 'station-dot');
+    c.addEventListener('click', e => {
+      e.stopPropagation();
+      if (dragMoved) return;
+      showPopup(s);
+    });
+    markerLayer.appendChild(c);
+  });
+}
+
+/* Close popup on map click */
+mapWrap.addEventListener('click', () => { if (!dragMoved) popup.style.display = 'none'; });
 
 /* ── Main ── */
 (async function init() {
 
-  /* Init Leaflet */
-  const map = L.map('map', {
-    center: [22.5, 82.9],
-    zoom: 5,
-    minZoom: 4,
-    maxZoom: 14,
-    maxBounds: [[4, 64], [40, 100]],
-    maxBoundsViscosity: 1.0,
-    zoomControl: true,
-  });
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20,
-  }).addTo(map);
-
-  map.fitBounds([[6.5, 68.1], [37.1, 97.4]], { padding: [24, 24] });
-
-  /* Fetch data + state GeoJSON in parallel */
   const usingDemo = CPCB_API_KEY === 'YOUR_API_KEY_HERE';
 
-  const [fetchedStations, stateGeojson] = await Promise.all([
+  const [stations, stateGeo] = await Promise.all([
     (async () => {
       try {
-        if (usingDemo) {
-          showBanner('Demo mode — add your data.gov.in API key for live readings.', 'info');
-          return DEMO_STATIONS;
-        }
+        if (usingDemo) { showBanner('Demo mode — add your data.gov.in API key for live readings.', 'info'); return DEMO_STATIONS; }
         const s = await fetchCPCBData();
-        if (s.length === 0) throw new Error('No records returned by API');
+        if (!s.length) throw new Error('No records returned by API');
         return s;
       } catch (err) {
         console.error('[vatavaran] CPCB fetch failed:', err);
@@ -692,86 +704,67 @@ function showBanner(msg, type = 'error') {
       }
     })(),
     fetch('https://raw.githubusercontent.com/datameet/maps/master/States/Admin2.json')
-      .then(r => r.ok ? r.json() : null)
-      .catch(() => null),
+      .then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
 
-  let stations = fetchedStations;
+  /* ── State avg AQI ── */
+  const stateSum = {}, stateCnt = {};
+  stations.forEach(s => {
+    if (!s.state) return;
+    const k = normState(s.state);
+    stateSum[k] = (stateSum[k] || 0) + s.aqi;
+    stateCnt[k] = (stateCnt[k] || 0) + 1;
+  });
 
-  /* ── State overlay ── */
-  const stateBoundsMap = {}; /* normalized state name → L.LatLngBounds */
+  /* ── Render state layer ── */
+  const stateLayer = document.getElementById('state-layer');
+  const stateSVGBounds = {}; /* normName → {minX,minY,maxX,maxY} in SVG space */
 
-  function normStateName(s) { return (s || '').toLowerCase().trim(); }
+  if (stateGeo && stateGeo.features) {
+    stateGeo.features.forEach(feat => {
+      if (!feat.geometry) return;
+      const name    = geoStateName(feat);
+      const normKey = normState(name);
+      const avgAqi  = stateCnt[normKey]
+        ? Math.round(stateSum[normKey] / stateCnt[normKey]) : null;
 
-  function getStateNameFromFeature(f) {
-    return f.properties.ST_NM || f.properties.NAME_1 || f.properties.State || f.properties.name || '';
-  }
+      const d = featureToD(feat);
+      if (!d) return;
 
-  if (stateGeojson) {
-    /* Avg AQI per state (keyed by normalized API state name) */
-    const stateSum = {}, stateCount = {};
-    stations.forEach(s => {
-      if (!s.state) return;
-      const k = normStateName(s.state);
-      stateSum[k]   = (stateSum[k]   || 0) + s.aqi;
-      stateCount[k] = (stateCount[k] || 0) + 1;
-    });
+      /* Compute SVG bounding box for this state's projected rings */
+      const geom  = feat.geometry;
+      const rings = geom.type === 'Polygon' ? geom.coordinates : geom.coordinates.flat();
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      rings.forEach(ring => ring.forEach(pt => {
+        const [x, y] = project(pt[1], pt[0]);
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }));
+      stateSVGBounds[normKey] = { minX, minY, maxX, maxY };
 
-    L.geoJSON(stateGeojson, {
-      style: feature => {
-        const name = getStateNameFromFeature(feature);
-        const avg  = stateSum[normStateName(name)]
-          ? Math.round(stateSum[normStateName(name)] / stateCount[normStateName(name)])
-          : null;
-        return {
-          fillColor:   avg ? aqiColor(avg) : 'transparent',
-          fillOpacity: avg ? 0.25 : 0,
-          color:       '#2D4A32',
-          weight:      0.8,
-          opacity:     0.5,
-        };
-      },
-      onEachFeature: (feature, layer) => {
-        const geoName = getStateNameFromFeature(feature);
-        const normKey = normStateName(geoName);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('class', 'state-path');
+      path.setAttribute('fill', avgAqi ? aqiColor(avgAqi) : 'transparent');
+      path.setAttribute('fill-opacity', avgAqi ? '0.22' : '0');
 
-        /* Store bounds for filter panel (keyed by normalized GeoJSON name) */
-        stateBoundsMap[normKey] = layer.getBounds();
+      if (avgAqi) {
+        path.addEventListener('mouseenter', e => {
+          path.setAttribute('fill-opacity', '0.42');
+          showTip(e, `${name} &middot; Avg AQI <strong>${avgAqi}</strong> &middot; ${aqiVerdict(avgAqi)}`);
+        });
+        path.addEventListener('mousemove', moveTip);
+        path.addEventListener('mouseleave', () => {
+          path.setAttribute('fill-opacity', '0.22');
+          hideTip();
+        });
+      }
 
-        const avg = stateSum[normKey]
-          ? Math.round(stateSum[normKey] / stateCount[normKey])
-          : null;
-
-        if (avg) {
-          layer.bindTooltip(
-            `${geoName} &middot; Avg AQI ${avg} &middot; ${aqiVerdict(avg)}`,
-            { sticky: true, className: 'state-tooltip' }
-          );
-          layer.on('mouseover', () => layer.setStyle({ fillOpacity: 0.45 }));
-          layer.on('mouseout',  () => layer.setStyle({ fillOpacity: 0.25 }));
-        }
-      },
-    }).addTo(map);
-  }
-
-  /* ── Station markers ── */
-  let markerLayer = L.layerGroup().addTo(map);
-
-  function renderMarkers(list) {
-    markerLayer.clearLayers();
-    list.forEach(s => {
-      const circle = L.circleMarker([s.lat, s.lng], {
-        radius:      9,
-        fillColor:   aqiColor(s.aqi),
-        color:       'rgba(255,255,255,0.3)',
-        weight:      1.5,
-        fillOpacity: 0.92,
-      });
-      circle.bindPopup(buildPopupHTML(s), { maxWidth: 260 });
-      markerLayer.addLayer(circle);
+      stateLayer.appendChild(path);
     });
   }
 
+  /* ── Render markers ── */
   renderMarkers(stations);
   updateStats(stations);
 
@@ -782,7 +775,6 @@ function showBanner(msg, type = 'error') {
   const citySelect  = document.getElementById('filter-city');
   const resetEl     = document.getElementById('filter-reset');
 
-  /* Populate state dropdown */
   const stateSet = new Set(stations.map(s => s.state).filter(Boolean));
   [...stateSet].sort().forEach(name => {
     const opt = document.createElement('option');
@@ -790,7 +782,6 @@ function showBanner(msg, type = 'error') {
     stateSelect.appendChild(opt);
   });
 
-  /* Cities grouped by state */
   const citiesByState = {};
   stations.forEach(s => {
     if (!s.state || !s.city) return;
@@ -798,12 +789,10 @@ function showBanner(msg, type = 'error') {
     citiesByState[s.state].add(s.city);
   });
 
-  function rebuildCitySelect(stateName) {
+  function rebuildCities(stateName) {
     citySelect.innerHTML = '<option value="">All Cities</option>';
-    if (!stateName) return;
-    const cities = citiesByState[stateName];
-    if (!cities) return;
-    [...cities].sort().forEach(c => {
+    if (!stateName || !citiesByState[stateName]) return;
+    [...citiesByState[stateName]].sort().forEach(c => {
       const opt = document.createElement('option');
       opt.value = c; opt.textContent = c;
       citySelect.appendChild(opt);
@@ -813,45 +802,50 @@ function showBanner(msg, type = 'error') {
   strip.addEventListener('click', () => panel.classList.toggle('expanded'));
 
   stateSelect.addEventListener('change', () => {
-    const stateName = stateSelect.value;
-    rebuildCitySelect(stateName);
+    const st = stateSelect.value;
+    rebuildCities(st);
     citySelect.value = '';
+    popup.style.display = 'none';
 
-    const filtered = stateName ? stations.filter(s => s.state === stateName) : stations;
+    const filtered = st ? stations.filter(s => s.state === st) : stations;
     renderMarkers(filtered);
 
-    if (stateName) {
-      const bounds = stateBoundsMap[normStateName(stateName)];
-      if (bounds && bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40] });
-      } else if (filtered.length > 0) {
-        map.fitBounds(filtered.map(s => [s.lat, s.lng]), { padding: [60, 60] });
+    if (st) {
+      const bounds = stateSVGBounds[normState(st)];
+      if (bounds) {
+        const pad = 30;
+        vb.x = Math.max(0, bounds.minX - pad);
+        vb.y = Math.max(0, bounds.minY - pad);
+        vb.w = (bounds.maxX - bounds.minX) + pad * 2;
+        vb.h = vb.w * SVG_H / SVG_W;
+        clampVB(); applyVB();
+      } else {
+        flyToList(filtered);
       }
     } else {
-      map.fitBounds([[6.5, 68.1], [37.1, 97.4]], { padding: [24, 24] });
+      vb = { x: 0, y: 0, w: SVG_W, h: SVG_H }; applyVB();
     }
   });
 
   citySelect.addEventListener('change', () => {
-    const cityName  = citySelect.value;
-    const stateName = stateSelect.value;
-    let filtered = stateName ? stations.filter(s => s.state === stateName) : stations;
-
-    if (cityName) {
-      filtered = filtered.filter(s => s.city === cityName);
-      if (filtered.length > 0) map.setView([filtered[0].lat, filtered[0].lng], 12);
-    }
+    const city = citySelect.value;
+    const st   = stateSelect.value;
+    let filtered = st ? stations.filter(s => s.state === st) : stations;
+    if (city) filtered = filtered.filter(s => s.city === city);
     renderMarkers(filtered);
+    if (city) flyToList(filtered);
+    popup.style.display = 'none';
   });
 
   resetEl.addEventListener('click', () => {
     stateSelect.value = '';
-    rebuildCitySelect('');
+    rebuildCities('');
     renderMarkers(stations);
-    map.fitBounds([[6.5, 68.1], [37.1, 97.4]], { padding: [24, 24] });
+    vb = { x: 0, y: 0, w: SVG_W, h: SVG_H }; applyVB();
+    popup.style.display = 'none';
   });
 
-  /* Hide loading */
+  /* ── Hide loading ── */
   const overlay = document.getElementById('loading-overlay');
   overlay.classList.add('fade-out');
   setTimeout(() => { overlay.style.display = 'none'; }, 500);
