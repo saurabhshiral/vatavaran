@@ -40,16 +40,23 @@ const DEMO_STATIONS = [
   {city:'Pune',station:'Shivajinagar',state:'Maharashtra',lat:18.53,lng:73.85,aqi:78,pollutant:'PM2.5',updated:'demo'},
 ];
 
+async function timedFetch(url, ms = 12000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
+
 async function fetchCPCBData() {
   const pri = p => p==='PM2.5'?2:p==='PM10'?1:0;
   const byStation = new Map();
   const allKeys = new Set();
   let offset = 0, page = 0;
-  const MAX_PAGES = 20;
+  const MAX_PAGES = 8;
   while (true) {
     if (++page > MAX_PAGES) break;
     const url = `${CPCB_API_URL}?api-key=${CPCB_API_KEY}&format=json&limit=${API_PAGE_LIMIT}&offset=${offset}`;
-    const res = await fetch(url);
+    const res = await timedFetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const records = data.records || [];
