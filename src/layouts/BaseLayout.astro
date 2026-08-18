@@ -131,6 +131,15 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
     .spinner { width: 32px; height: 32px; border: 3px solid var(--border);
       border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    #breathe-tag { position: fixed; bottom: 24px; left: calc(var(--panel-collapsed) + 16px);
+      z-index: 150; font-size: 11px; color: var(--text-muted); display: flex;
+      align-items: center; gap: 6px; letter-spacing: 0.4px; font-style: italic; }
+    .breathe-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+      flex-shrink: 0; animation: breathe-pulse 3.5s ease-in-out infinite; }
+    @keyframes breathe-pulse {
+      0%, 100% { opacity: 0.35; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.5); }
+    }
     #banner { position: fixed; top: calc(var(--nav-h) + var(--stats-h) + 8px); left: 50%;
       transform: translateX(-50%); z-index: 350; background: var(--surface-2);
       border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px;
@@ -139,9 +148,9 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
 </head>
 <body>
 <nav>
-  <a class="wordmark" href={base + '/'}>वाता<span>वरण</span></a>
+  <a class="wordmark" href={base + '/'}>India's <span>Pulse</span></a>
   <div class="tabs">
-    <a href={base + '/vayu/'} class={activeTab==='vayu' ? 'active' : ''}>vayu</a>
+    <a href={base + '/vayu/'} class={activeTab==='vayu' ? 'active' : ''}>Vayu/Air</a>
     <a href={base + '/agni/'} class={activeTab==='agni' ? 'active dimmed' : 'dimmed'}>agni</a>
     <a href={base + '/jal/'}  class={activeTab==='jal'  ? 'active dimmed' : 'dimmed'}>jal</a>
   </div>
