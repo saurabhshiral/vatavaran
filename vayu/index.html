@@ -711,32 +711,53 @@ function showBanner(msg, type = 'error') {
   setTimeout(() => { banner.style.display = 'none'; }, 8000);
 }
 
-/* ── Simplified India boundary for the dark mask ─────────────────── */
-/* Outer ring = entire world; inner ring = India shape (creates a hole) */
-const INDIA_MASK_GEOJSON = {
-  type: 'Feature',
-  geometry: {
-    type: 'Polygon',
-    coordinates: [
-      /* World outer ring (CCW) */
-      [[-180,-90],[-180,90],[180,90],[180,-90],[-180,-90]],
-      /* India inner ring / hole (CW) — simplified outline */
-      [
-        [68.1,37.1],[68.1,35.5],[69.3,34.6],[71.0,33.4],[73.9,34.5],
-        [74.6,34.7],[75.4,34.6],[76.8,34.6],[79.1,32.5],[80.3,31.1],
-        [81.8,30.0],[83.3,29.0],[84.7,28.3],[86.5,28.1],[88.0,27.5],
-        [88.9,27.3],[92.0,27.0],[93.4,26.7],[95.0,27.3],[97.3,28.3],
-        [97.0,25.8],[96.2,23.9],[94.5,23.6],[93.5,22.2],[92.4,21.5],
-        [91.5,22.5],[89.8,21.8],[88.5,21.6],[87.4,21.2],[86.8,20.2],
-        [85.8,19.8],[84.0,19.3],[82.8,18.0],[80.9,16.0],[80.3,15.6],
-        [80.0,13.5],[79.8,10.3],[77.5,8.1],[76.6,8.5],[76.2,10.4],
-        [75.7,11.9],[74.9,13.6],[74.3,14.8],[73.8,18.0],[73.0,18.9],
-        [72.9,19.2],[72.5,21.4],[68.7,22.4],[68.2,23.6],[68.4,29.0],
-        [68.1,37.1]
-      ]
-    ]
+/* ── India boundary: fetch from datameet, fall back to inline ─────── */
+const WORLD_RING = [[-180,-90],[-180,90],[180,90],[180,-90],[-180,-90]];
+
+/* Rough inline fallback — only used if the datameet fetch fails */
+const FALLBACK_INDIA_RING = [
+  [68.1,37.1],[68.1,35.5],[69.3,34.6],[71.0,33.4],[73.9,34.5],
+  [74.6,34.7],[75.4,34.6],[76.8,34.6],[79.1,32.5],[80.3,31.1],
+  [81.8,30.0],[83.3,29.0],[84.7,28.3],[86.5,28.1],[88.0,27.5],
+  [88.9,27.3],[92.0,27.0],[93.4,26.7],[95.0,27.3],[97.3,28.3],
+  [97.0,25.8],[96.2,23.9],[94.5,23.6],[93.5,22.2],[92.4,21.5],
+  [91.5,22.5],[89.8,21.8],[88.5,21.6],[87.4,21.2],[86.8,20.2],
+  [85.8,19.8],[84.0,19.3],[82.8,18.0],[80.9,16.0],[80.3,15.6],
+  [80.0,13.5],[79.8,10.3],[77.5,8.1],[76.6,8.5],[76.2,10.4],
+  [75.7,11.9],[74.9,13.6],[74.3,14.8],[73.8,18.0],[73.0,18.9],
+  [72.9,19.2],[72.5,21.4],[68.7,22.4],[68.2,23.6],[68.4,29.0],
+  [68.1,37.1]
+];
+
+async function buildIndiaMask() {
+  let indiaRing = FALLBACK_INDIA_RING;
+  try {
+    const resp = await fetch(
+      'https://raw.githubusercontent.com/datameet/maps/master/Country/india-land-simplified.geojson'
+    );
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const geojson = await resp.json();
+    /* Handle Feature, FeatureCollection, Polygon, MultiPolygon */
+    const geo = geojson.type === 'FeatureCollection'
+      ? geojson.features[0].geometry
+      : geojson.type === 'Feature' ? geojson.geometry : geojson;
+    indiaRing = geo.type === 'MultiPolygon'
+      ? geo.coordinates[0][0]  // largest polygon's outer ring
+      : geo.coordinates[0];    // Polygon outer ring
+  } catch (e) {
+    console.warn('[vatavaran] India boundary fetch failed, using fallback:', e.message);
   }
-};
+  return {
+    maskGeoJSON: {
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [WORLD_RING, indiaRing] },
+    },
+    borderGeoJSON: {
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: indiaRing },
+    },
+  };
+}
 
 /* AQI colour step expression for MapLibre paint (avoids string property lookup) */
 const AQI_COLOR_STEP = [
@@ -793,7 +814,7 @@ const AQI_COLOR_STEP = [
   const usingDemo = CPCB_API_KEY === 'YOUR_API_KEY_HERE';
   let stations = [];
 
-  const [fetchedStations] = await Promise.all([
+  const [fetchedStations, india] = await Promise.all([
     (async () => {
       try {
         if (usingDemo) {
@@ -809,6 +830,7 @@ const AQI_COLOR_STEP = [
         return DEMO_STATIONS;
       }
     })(),
+    buildIndiaMask(),
     new Promise(resolve => map.once('load', resolve)),
   ]);
 
@@ -818,8 +840,8 @@ const AQI_COLOR_STEP = [
   map.fitBounds([[68.1, 6.5], [97.4, 37.1]], { padding: 24, animate: false });
   map.setMaxBounds([[64, 4], [100, 40]]);
 
-  /* ── Dark mask over non-India area ─────────────────────────────── */
-  map.addSource('india-mask', { type: 'geojson', data: INDIA_MASK_GEOJSON });
+  /* ── Dark mask over non-India area (accurate datameet boundary) ─── */
+  map.addSource('india-mask', { type: 'geojson', data: india.maskGeoJSON });
   map.addLayer({
     id: 'india-mask-fill',
     type: 'fill',
@@ -830,13 +852,7 @@ const AQI_COLOR_STEP = [
     },
   });
   /* Subtle green border around India */
-  map.addSource('india-border', {
-    type: 'geojson',
-    data: {
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: INDIA_MASK_GEOJSON.geometry.coordinates[1] },
-    },
-  });
+  map.addSource('india-border', { type: 'geojson', data: india.borderGeoJSON });
   map.addLayer({
     id: 'india-border-line',
     type: 'line',
