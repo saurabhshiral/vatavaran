@@ -306,6 +306,58 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
 
     /* Band counts (used by updateLegend, may be hidden) */
     .band-count { display: none; }
+
+    /* ── Mobile layout ── */
+    @media (max-width: 768px) {
+      :root { --panel-w: 0px; --panel-mob-h: 44vh; }
+
+      /* Compact nav */
+      nav { padding: 0 12px; }
+      .wordmark { font-size: 14px; gap: 5px; }
+      .wordmark-leaf { width: 15px; height: 15px; }
+      .tabs { gap: 1px; }
+      .tabs a { padding: 5px 10px; font-size: 12px; }
+      .tabs a.dimmed { display: none; } /* hide coming-soon on mobile */
+
+      /* Map fills top portion */
+      #map-wrap { right: 0; bottom: var(--panel-mob-h); }
+
+      /* Panel slides up as bottom sheet */
+      #info-panel {
+        position: fixed; top: auto; bottom: 0;
+        left: 0; right: 0; width: 100%;
+        height: var(--panel-mob-h);
+        border-left: none; border-top: 1px solid var(--border);
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -6px 32px rgba(0,0,0,0.25);
+      }
+      /* Drag-handle pill */
+      #info-panel::before {
+        content: ''; display: block; width: 36px; height: 4px;
+        background: var(--border); border-radius: 2px;
+        margin: 8px auto 2px; flex-shrink: 0;
+      }
+
+      /* Tighten inner cards */
+      .hero-card { margin: 6px 10px 0; padding: 12px 14px 10px; }
+      .hero-num { font-size: 36px; }
+      .hero-leaf { font-size: 60px; right: -4px; top: -8px; }
+      .hero-title { font-size: 13px; }
+      #panel-categories { padding: 8px 12px 0; }
+      .cat-label { width: 74px; }
+
+      /* Breathe tag clears the panel */
+      #breathe-tag { bottom: calc(var(--panel-mob-h) + 8px); font-size: 10px; }
+
+      /* Popup smaller on mobile */
+      #popup { max-width: 250px; font-size: 12px; }
+      #popup-inner { padding: 10px 12px; }
+    }
+
+    @media (max-width: 420px) {
+      .wordmark span { display: none; } /* "Pulse" text, keep "India's" + leaf */
+      .tabs a { padding: 5px 8px; font-size: 11px; }
+    }
   </style>
 </head>
 <body>

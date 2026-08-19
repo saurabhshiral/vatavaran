@@ -116,6 +116,13 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     position: fixed; top: var(--nav-h); left: 0; right: 0; bottom: 0;
     overflow-y: auto; padding: 32px 20px 60px;
   }
+  @media (max-width: 768px) {
+    #about-page { padding: 20px 14px 40px; }
+    .about-hero { padding: 20px 0 16px; }
+    .about-hero h1 { font-size: 26px; }
+    .about-card { padding: 18px 18px; }
+    .about-aqi-legend { grid-template-columns: repeat(2, 1fr); }
+  }
   #about-page::-webkit-scrollbar { width: 4px; }
   #about-page::-webkit-scrollbar-track { background: transparent; }
   #about-page::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
