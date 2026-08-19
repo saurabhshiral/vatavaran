@@ -404,21 +404,48 @@ function renderStateCityView(normName) {
 
   let listHtml = '<div class="list-section-title">Cities by AQI</div>';
   cities.forEach(c => {
+    const multi = c.count > 1;
     listHtml += `
-      <div class="panel-row city-row" data-city="${c.city}">
+      <div class="panel-row city-row${multi ? ' city-multi' : ''}" data-city="${c.city}">
         <span class="panel-dot" style="background:${aqiColor(c.avg)}"></span>
         <span class="panel-name">${c.city}</span>
         <span class="panel-aqi" style="color:${aqiTextColor(c.avg)}">${c.avg}</span>
-        <span class="panel-verdict">${aqiVerdict(c.avg)} · ${c.count} stn</span>
+        <span class="panel-verdict">${aqiVerdict(c.avg)} · ${c.count} stn${multi ? '<span class="city-chevron">›</span>' : ''}</span>
       </div>`;
+    if (multi) {
+      [...c.stations].sort((a, b) => b.aqi - a.aqi).forEach(stn => {
+        listHtml += `
+          <div class="stn-subrow" data-parent-city="${c.city}" style="display:none">
+            <span class="stn-subrow-dot" style="background:${aqiColor(stn.aqi)}"></span>
+            <span class="stn-subrow-name">${stn.station}</span>
+            <span class="stn-subrow-aqi" style="color:${aqiTextColor(stn.aqi)}">${stn.aqi}</span>
+          </div>`;
+      });
+    }
   });
 
   panelList.innerHTML = listHtml;
   cities.forEach(c => {
-    const row = panelList.querySelector(`[data-city="${CSS.escape(c.city)}"]`);
-    if (row) row.addEventListener('click', () => {
-      const best = [...c.stations].sort((a, b) => b.aqi - a.aqi)[0];
-      if (best) showPopup(best);
+    const row = panelList.querySelector(`.city-row[data-city="${CSS.escape(c.city)}"]`);
+    if (!row) return;
+    if (c.count === 1) {
+      row.addEventListener('click', () => showPopup(c.stations[0]));
+    } else {
+      row.addEventListener('click', () => {
+        const expanded = row.classList.toggle('expanded');
+        panelList.querySelectorAll(`.stn-subrow[data-parent-city="${CSS.escape(c.city)}"]`)
+          .forEach(sr => { sr.style.display = expanded ? 'flex' : 'none'; });
+      });
+    }
+  });
+  panelList.querySelectorAll('.stn-subrow').forEach(sr => {
+    sr.addEventListener('click', e => {
+      e.stopPropagation();
+      const parentCity = sr.dataset.parentCity;
+      const stnName = sr.querySelector('.stn-subrow-name')?.textContent;
+      const cityData = cities.find(c => c.city === parentCity);
+      const stn = cityData?.stations.find(s => s.station === stnName);
+      if (stn) showPopup(stn);
     });
   });
 

@@ -281,6 +281,27 @@ const themeCSS = Object.entries(themeOverrides).map(([k,v])=>`${k}:${v}`).join('
       padding: 1px 5px; border-radius: 3px; margin-left: 4px; opacity: 0.8;
     }
 
+    /* City expand chevron */
+    .city-chevron {
+      display: inline-block; margin-left: 4px; font-size: 13px; font-weight: 700;
+      transition: transform .15s; line-height: 1;
+    }
+    .panel-row.expanded .city-chevron { transform: rotate(90deg); }
+
+    /* Station sub-rows (expanded under a multi-station city) */
+    .stn-subrow {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 16px 5px 30px; cursor: pointer;
+      border-bottom: 1px solid rgba(45,74,50,0.12);
+      background: rgba(0,0,0,0.12); transition: background .1s;
+    }
+    html.light .stn-subrow { background: rgba(0,0,0,0.04); }
+    .stn-subrow:hover { background: rgba(0,0,0,0.2); }
+    html.light .stn-subrow:hover { background: rgba(0,0,0,0.08); }
+    .stn-subrow-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .stn-subrow-name { flex: 1; font-size: 11px; color: var(--text-muted); }
+    .stn-subrow-aqi { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; }
+
     /* Band counts (used by updateLegend, may be hidden) */
     .band-count { display: none; }
   </style>
