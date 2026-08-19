@@ -1,0 +1,177 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+<BaseLayout title="About · India's Pulse" activeTab="about">
+  <div id="about-page">
+    <div class="about-wrap">
+
+      <section class="about-hero">
+        <svg class="about-leaf" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C7.58 2 4 5.13 4 9C4 13 7 16.7 12 22C17 16.7 20 13 20 9C20 5.13 16.42 2 12 2Z"/>
+        </svg>
+        <h1>India's <span>Pulse</span></h1>
+        <p class="about-tagline">Know what you breathe.</p>
+      </section>
+
+      <section class="about-card">
+        <h2>What is this?</h2>
+        <p>
+          India's Pulse is an open air-quality dashboard that maps real-time AQI (Air Quality Index)
+          data from monitoring stations across India. The map shows every state's weighted average AQI,
+          with worse cities carrying more weight so the national picture stays honest.
+        </p>
+        <p>
+          Click any state on the map — or in the side panel — to drill down into its cities and individual
+          monitoring stations.
+        </p>
+      </section>
+
+      <section class="about-card">
+        <h2>Data Source</h2>
+        <div class="about-source-row">
+          <div class="about-source-icon">🏛️</div>
+          <div>
+            <strong>Central Pollution Control Board (CPCB)</strong>
+            <p>
+              All AQI readings are sourced from the CPCB's National Ambient Air Quality Monitoring (NAAQS)
+              network via the Government of India's open data portal
+              (<a href="https://data.gov.in" target="_blank" rel="noopener">data.gov.in</a>).
+              Data is fetched live each time you load the page and covers PM2.5 and PM10 pollutants
+              across hundreds of stations nationwide.
+            </p>
+          </div>
+        </div>
+        <div class="about-pill-row">
+          <span class="about-pill">PM2.5</span>
+          <span class="about-pill">PM10</span>
+          <span class="about-pill">Live CPCB feed</span>
+          <span class="about-pill">api.data.gov.in</span>
+        </div>
+      </section>
+
+      <section class="about-card">
+        <h2>AQI Methodology</h2>
+        <p>
+          India's National AQI scale (0–500) is used throughout. Raw pollutant concentrations (µg/m³)
+          are converted to AQI using the CPCB breakpoint tables for PM2.5 and PM10.
+        </p>
+        <p>
+          State-level AQI is a <strong>weighted average</strong> where each city contributes
+          proportionally to its own pollution level — a city at AQI 350 gets roughly ten times
+          the weight of a city at AQI 35. This prevents clean rural areas from masking heavily
+          polluted urban centres.
+        </p>
+        <div class="about-aqi-legend">
+          {[
+            ['Good',        '0–50',   '#55A84F'],
+            ['Satisfactory','51–100', '#A3C853'],
+            ['Moderate',    '101–200','#FFF833'],
+            ['Poor',        '201–300','#F29C33'],
+            ['Very Poor',   '301–400','#E93F33'],
+            ['Severe',      '401–500','#AF2D24'],
+          ].map(([label, range, color]) => (
+            <div class="aqi-leg-row">
+              <span class="aqi-leg-dot" style={`background:${color}`}></span>
+              <span class="aqi-leg-label">{label}</span>
+              <span class="aqi-leg-range">{range}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section class="about-card">
+        <h2>Tech Stack</h2>
+        <div class="about-pill-row">
+          <span class="about-pill">Astro 5</span>
+          <span class="about-pill">Vanilla JS</span>
+          <span class="about-pill">Hand-rolled SVG map</span>
+          <span class="about-pill">GitHub Pages</span>
+        </div>
+        <p style="margin-top:12px">
+          The India map is an SVG rendered directly from SVGOMG-compressed state paths. No mapping
+          library is used — state fills, AQI bubbles, centroids, and hit-testing are all computed
+          in-browser with Canvas and vanilla DOM APIs.
+        </p>
+      </section>
+
+      <section class="about-card">
+        <h2>Disclaimer</h2>
+        <p>
+          Boundaries shown on the map are for <strong>representational purposes only</strong> and do
+          not reflect official Survey of India (SOI) demarcations or any political assertion.
+        </p>
+        <p>
+          AQI values are updated periodically by CPCB monitoring stations. Some stations may report
+          delayed or missing data; the dashboard only displays stations with valid readings at the
+          time of your visit.
+        </p>
+      </section>
+
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  #about-page {
+    position: fixed; top: var(--nav-h); left: 0; right: 0; bottom: 0;
+    overflow-y: auto; padding: 32px 20px 60px;
+  }
+  #about-page::-webkit-scrollbar { width: 4px; }
+  #about-page::-webkit-scrollbar-track { background: transparent; }
+  #about-page::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .about-wrap { max-width: 680px; margin: 0 auto; }
+
+  .about-hero {
+    text-align: center; padding: 32px 0 28px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .about-leaf { width: 40px; height: 40px; fill: var(--accent); }
+  .about-hero h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.8px; color: var(--text); }
+  .about-hero h1 span { color: var(--accent); }
+  .about-tagline { font-size: 14px; color: var(--text-muted); font-style: italic; letter-spacing: 0.3px; }
+
+  .about-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 24px 28px; margin-bottom: 16px;
+  }
+  .about-card h2 {
+    font-size: 15px; font-weight: 700; color: var(--text);
+    margin-bottom: 12px; letter-spacing: -0.2px;
+  }
+  .about-card p {
+    font-size: 14px; color: var(--text-muted); line-height: 1.65;
+    margin-bottom: 10px;
+  }
+  .about-card p:last-child { margin-bottom: 0; }
+  .about-card a { color: var(--accent); text-decoration: none; }
+  .about-card a:hover { text-decoration: underline; }
+  .about-card strong { color: var(--text); font-weight: 600; }
+
+  .about-source-row {
+    display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px;
+  }
+  .about-source-icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+  .about-source-row strong { font-size: 14px; color: var(--text); display: block; margin-bottom: 6px; }
+  .about-source-row p { margin-bottom: 0; }
+
+  .about-pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .about-pill {
+    font-size: 11px; font-weight: 600; padding: 3px 10px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 20px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;
+  }
+
+  .about-aqi-legend {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 6px; margin-top: 14px;
+  }
+  .aqi-leg-row {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px;
+  }
+  .aqi-leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .aqi-leg-label { font-size: 12px; font-weight: 500; color: var(--text); flex: 1; }
+  .aqi-leg-range { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+</style>

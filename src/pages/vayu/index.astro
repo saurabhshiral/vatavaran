@@ -25,6 +25,46 @@ function computeAQI(pollutant, value) {
   return null;
 }
 
+// mirrors normState() in IndiaMap.astro
+const normState = s => (s||'').toLowerCase().replace(/&/g,'and').replace(/\s+/g,' ').trim();
+
+// Centroid lat/lng for every Indian state — used for Open-Meteo gap-fill
+const STATE_CENTROIDS = {
+  'andhra pradesh':   [15.9, 79.7],
+  'arunachal pradesh':[28.2, 94.7],
+  'assam':            [26.2, 92.9],
+  'bihar':            [25.1, 85.3],
+  'chandigarh':       [30.7, 76.8],
+  'chhattisgarh':     [21.3, 81.6],
+  'dadra and nagar haveli and daman and diu': [20.1, 73.0],
+  'delhi':            [28.7, 77.1],
+  'goa':              [15.3, 74.0],
+  'gujarat':          [22.3, 71.2],
+  'haryana':          [29.1, 76.1],
+  'himachal pradesh': [31.1, 77.2],
+  'jammu and kashmir':[33.7, 76.9],
+  'ladakh':           [34.2, 77.6],
+  'jharkhand':        [23.6, 85.3],
+  'karnataka':        [15.3, 75.7],
+  'kerala':           [10.9, 76.3],
+  'madhya pradesh':   [22.9, 78.7],
+  'maharashtra':      [19.7, 75.7],
+  'manipur':          [24.7, 93.9],
+  'meghalaya':        [25.5, 91.4],
+  'mizoram':          [23.2, 92.7],
+  'nagaland':         [26.2, 94.6],
+  'odisha':           [20.9, 84.2],
+  'punjab':           [31.1, 75.3],
+  'rajasthan':        [27.0, 74.2],
+  'sikkim':           [27.5, 88.5],
+  'tamil nadu':       [11.1, 78.7],
+  'telangana':        [18.1, 79.0],
+  'tripura':          [23.9, 91.9],
+  'uttar pradesh':    [27.1, 80.7],
+  'uttarakhand':      [30.3, 78.9],
+  'west bengal':      [22.6, 88.4],
+};
+
 const DEMO_STATIONS = [
   {city:'Delhi',station:'IGI Airport',state:'Delhi',lat:28.56,lng:77.12,aqi:189,pollutant:'PM2.5',updated:'demo'},
   {city:'Mumbai',station:'Bandra',state:'Maharashtra',lat:19.05,lng:72.84,aqi:62,pollutant:'PM2.5',updated:'demo'},
@@ -47,6 +87,7 @@ async function timedFetch(url, ms = 12000) {
   finally { clearTimeout(t); }
 }
 
+// ── Source 1: CPCB ──
 async function fetchCPCBData() {
   const pri = p => p==='PM2.5'?2:p==='PM10'?1:0;
   const byStation = new Map();
@@ -76,7 +117,7 @@ async function fetchCPCBData() {
       const ex = byStation.get(key);
       if (!ex || pri(pid)>pri(ex.pollutant) || (pri(pid)===pri(ex.pollutant)&&aqi>ex.aqi))
         byStation.set(key, { city, station, state, lat, lng, aqi, pollutant:pid, updated:r.last_update||'',
-          min: parseFloat(r.pollutant_min), max: parseFloat(r.pollutant_max) });
+          min: parseFloat(r.pollutant_min), max: parseFloat(r.pollutant_max), source: 'cpcb' });
     });
     if (records.length < API_PAGE_LIMIT) break;
     offset += API_PAGE_LIMIT;
@@ -84,15 +125,145 @@ async function fetchCPCBData() {
   return { stations: [...byStation.values()], total: allKeys.size };
 }
 
+// ── Source 2: OpenAQ ──
+async function fetchOpenAQData() {
+  const pri = p => p==='PM2.5'?2:p==='PM10'?1:0;
+  const byStation = new Map();
+  let page = 1;
+  while (page <= 3) {
+    const url = `https://api.openaq.org/v2/latest?country=IN&limit=1000&page=${page}`;
+    const res = await timedFetch(url, 15000);
+    if (!res.ok) break;
+    const data = await res.json();
+    const records = data.results || [];
+    if (!records.length) break;
+    records.forEach(r => {
+      if (!r.coordinates?.latitude || !r.coordinates?.longitude) return;
+      const lat = r.coordinates.latitude, lng = r.coordinates.longitude;
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      const city    = (r.city || '').trim();
+      const station = (r.location || city).trim();
+      if (!city || !station) return;
+      const key = `oaq_${station}|${city}`;
+      (r.measurements || []).forEach(m => {
+        const pid = m.parameter === 'pm25' ? 'PM2.5' : m.parameter === 'pm10' ? 'PM10' : null;
+        if (!pid || !isFinite(m.value) || m.value < 0) return;
+        const aqi = computeAQI(pid, m.value);
+        if (aqi === null) return;
+        const ex = byStation.get(key);
+        if (!ex || pri(pid)>pri(ex.pollutant) || (pri(pid)===pri(ex.pollutant)&&aqi>ex.aqi))
+          byStation.set(key, { city, station, state: '', lat, lng, aqi, pollutant: pid,
+            updated: m.lastUpdated || '', source: 'openaq', min: NaN, max: NaN });
+      });
+    });
+    if (records.length < 1000) break;
+    page++;
+  }
+  return [...byStation.values()];
+}
+
+// ── Source 3: Open-Meteo (gap-fill for states with no station data) ──
+async function fetchOpenMeteoGapFill(uncoveredNorms) {
+  const settled = await Promise.allSettled(
+    uncoveredNorms.map(async normName => {
+      const coords = STATE_CENTROIDS[normName];
+      if (!coords) return null;
+      const [lat, lng] = coords;
+      const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lng}&current=pm2_5,pm10`;
+      const res = await timedFetch(url, 8000);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const curr = data.current;
+      if (!curr) return null;
+      let pollutant = null, rawVal = null;
+      if (curr.pm2_5 != null && curr.pm2_5 >= 0) { pollutant = 'PM2.5'; rawVal = curr.pm2_5; }
+      else if (curr.pm10 != null && curr.pm10 >= 0) { pollutant = 'PM10'; rawVal = curr.pm10; }
+      if (!pollutant) return null;
+      const aqi = computeAQI(pollutant, rawVal);
+      if (!aqi) return null;
+      const displayName = normName.replace(/\b\w/g, c => c.toUpperCase());
+      return {
+        city: displayName, station: 'Atmospheric Model (CAMS)',
+        state: displayName, lat, lng, aqi, pollutant,
+        updated: 'model', source: 'open-meteo', min: NaN, max: NaN,
+      };
+    })
+  );
+  return settled.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+}
+
+// ── Orchestrate all sources ──
 async function initVayu(api) {
   try {
-    const { stations, total } = await fetchCPCBData();
-    if (!stations.length) throw new Error('No records returned');
+    // CPCB + OpenAQ in parallel
+    const [cpcbRes, oaqRes] = await Promise.allSettled([
+      fetchCPCBData(),
+      fetchOpenAQData(),
+    ]);
+
+    let stations = [];
+    let total = null;
+
+    if (cpcbRes.status === 'fulfilled' && cpcbRes.value.stations.length) {
+      stations = cpcbRes.value.stations;
+      total = cpcbRes.value.total;
+    } else {
+      console.warn('[vayu] CPCB unavailable:', cpcbRes.reason || 'no data');
+      api.showBanner('Live CPCB data unavailable — using supplemental sources only.');
+    }
+
+    // Build city→state lookup from CPCB so OpenAQ stations inherit state names
+    const cityStateMap = {};
+    const cpcbCities   = new Set();
+    stations.forEach(s => {
+      if (s.city && s.state) cityStateMap[s.city.toLowerCase()] = s.state;
+      if (s.city) cpcbCities.add(s.city.toLowerCase());
+    });
+
+    // Add OpenAQ stations only for cities CPCB doesn't cover
+    if (oaqRes.status === 'fulfilled') {
+      let added = 0;
+      oaqRes.value.forEach(s => {
+        if (!s.city || cpcbCities.has(s.city.toLowerCase())) return;
+        s.state = cityStateMap[s.city.toLowerCase()] || '';
+        stations.push(s);
+        cpcbCities.add(s.city.toLowerCase());
+        added++;
+      });
+      if (added) console.info(`[vayu] OpenAQ added ${added} new cities`);
+    } else {
+      console.warn('[vayu] OpenAQ unavailable:', oaqRes.reason);
+    }
+
+    if (!stations.length) {
+      api.showBanner('All live sources unavailable — showing demo data.');
+      api.renderMarkers(DEMO_STATIONS);
+      api.updateStats(DEMO_STATIONS);
+      return;
+    }
+
+    // First render with CPCB + OpenAQ
     api.renderMarkers(stations);
     api.updateStats(stations, total);
+
+    // Gap-fill states that still have zero coverage with Open-Meteo model data
+    const coveredStates  = new Set(stations.map(s => normState(s.state)).filter(Boolean));
+    const uncoveredNorms = Object.keys(STATE_CENTROIDS).filter(n => !coveredStates.has(n));
+
+    if (uncoveredNorms.length) {
+      console.info(`[vayu] Open-Meteo gap-filling ${uncoveredNorms.length} states:`, uncoveredNorms);
+      const meteoStations = await fetchOpenMeteoGapFill(uncoveredNorms);
+      if (meteoStations.length) {
+        const allStations = [...stations, ...meteoStations];
+        api.renderMarkers(allStations);
+        api.updateStats(allStations, total);
+        console.info(`[vayu] Open-Meteo filled ${meteoStations.length} states`);
+      }
+    }
+
   } catch (err) {
-    console.error('[vayu] CPCB fetch failed:', err);
-    api.showBanner(`Live data unavailable (${err.message}) — showing demo data.`);
+    console.error('[vayu] init failed:', err);
+    api.showBanner(`Data unavailable (${err.message}) — showing demo data.`);
     api.renderMarkers(DEMO_STATIONS);
     api.updateStats(DEMO_STATIONS);
   } finally {
