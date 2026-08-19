@@ -580,7 +580,10 @@ function renderPollutantsView() {
     return list.map(c => `
       <div class="panel-row">
         <span class="panel-dot" style="background:${aqiColor(c.avg)}"></span>
-        <span class="panel-name">${c.city}<span class="poll-tag" style="background:${aqiColor(c.avg)};color:${aqiLabelColor(aqiColor(c.avg))}">${tag}</span></span>
+        <span class="panel-name">
+          <span class="poll-city-name">${c.city}<span class="poll-tag" style="background:${aqiColor(c.avg)};color:${aqiLabelColor(aqiColor(c.avg))}">${tag}</span></span>
+          ${c.state ? `<span class="poll-city-state">${c.state}</span>` : ''}
+        </span>
         <span class="panel-aqi" style="color:${aqiTextColor(c.avg)}">${c.avg}</span>
         <span class="panel-verdict">${aqiVerdict(c.avg)}</span>
       </div>`).join('');
