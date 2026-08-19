@@ -255,7 +255,18 @@ function renderStateBubbles() {
 }
 
 // ── State selection ──
+function switchToOverviewTab() {
+  const viewOverview   = document.getElementById('view-overview');
+  const viewPollutants = document.getElementById('view-pollutants');
+  if (!viewPollutants || viewPollutants.style.display === 'none') return;
+  document.querySelectorAll('.ptab').forEach(b => b.classList.remove('active'));
+  document.querySelector('.ptab[data-tab="overview"]')?.classList.add('active');
+  if (viewOverview)   viewOverview.style.display   = '';
+  viewPollutants.style.display = 'none';
+}
+
 function selectState(normName) {
+  switchToOverviewTab();
   if (_selectedState && _stateDomPaths[_selectedState]) {
     _stateDomPaths[_selectedState].classList.remove('state-selected');
   }
